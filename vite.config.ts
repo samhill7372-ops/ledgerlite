@@ -24,10 +24,17 @@ export default defineConfig({
           { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' },
           { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
+        // Android share sheet: share a bank SMS / payment text straight into the Add screen.
+        share_target: {
+          action: '/share',
+          method: 'GET',
+          params: { title: 'title', text: 'text', url: 'url' },
+        },
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
+        navigateFallback: '/index.html',
       },
     }),
   ],

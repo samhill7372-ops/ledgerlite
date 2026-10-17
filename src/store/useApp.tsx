@@ -26,6 +26,9 @@ interface AppState {
   recurring: RecurringRule[];
   /** true until the user has picked their home currency (new accounts). */
   needsCurrency: boolean;
+  /** Text shared into the app via the Android share sheet (consumed by Add, never stored). */
+  sharedText: string | null;
+  clearShared(): void;
   view: View;
   editing: Expense | null;
   toast: Toast | null;
@@ -57,6 +60,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [budget, setBudgetState] = useState<Budget>(EMPTY_BUDGET);
   const [recurring, setRecurring] = useState<RecurringRule[]>([]);
   const [needsCurrency, setNeedsCurrency] = useState(false);
+  // Grab share-sheet text synchronously on first render, then scrub the URL.
+  const [sharedText, setSharedText] = useState<string | null>(() => {
+    try {
+      const u = new URL(window.location.href);
+      const t = [u.searchParams.get('text'), u.searchParams.get('title'), u.searchParams.get('url')].filter(Boolean).join(' ').trim();
+      if (u.pathname === '/share' || t) window.history.replaceState(null, '', '/');
+      return t || null;
+    } catch { return null; }
+  });
+  const clearShared = useCallback(() => setSharedText(null), []);
   const [view, setView] = useState<View>('home');
   const [editing, setEditing] = useState<Expense | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
@@ -102,7 +115,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setNeedsCurrency(!b.currency);
     setBudgetState(b);
     setView('home');
-  }, [showToast]);
+  }, [showToast]); // sharedText routing happens in Shell, so this callback stays stable
 
   const signOut = useCallback(async () => {
     await auth?.signOut(); vault.lock();
@@ -136,9 +149,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const updateRecurring = useCallback(async (rules: RecurringRule[]) => { if (!repos) return; await repos.recurring.saveAll(rules); setRecurring(rules); }, [repos]);
 
   const value = useMemo<AppState>(() => ({
-    ready, auth, session, needsUnlock, expenses, budget, recurring, needsCurrency, view, editing, toast,
+    ready, auth, session, needsUnlock, expenses, budget, recurring, needsCurrency, sharedText, clearShared, view, editing, toast,
     setView, startEdit: setEditing, onSignedIn, signOut, addExpense, updateExpense, deleteExpense, importExpenses, resetData, setBudget, addRecurring, updateRecurring, showToast,
-  }), [ready, auth, session, needsUnlock, expenses, budget, recurring, needsCurrency, view, editing, toast, onSignedIn, signOut, addExpense, updateExpense, deleteExpense, importExpenses, resetData, setBudget, addRecurring, updateRecurring, showToast]);
+  }), [ready, auth, session, needsUnlock, expenses, budget, recurring, needsCurrency, sharedText, clearShared, view, editing, toast, onSignedIn, signOut, addExpense, updateExpense, deleteExpense, importExpenses, resetData, setBudget, addRecurring, updateRecurring, showToast]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

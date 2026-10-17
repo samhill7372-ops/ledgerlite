@@ -5,10 +5,12 @@ import { SYMBOL, homeCurrency, round2 } from '@/lib/money';
 import { CurrencyOptions } from '@/components/CurrencyOptions';
 import { todayISO } from '@/lib/dates';
 import { afterAddMessage } from '@/lib/budget';
+import { parseSms } from '@/lib/sms';
+import { guessCategory } from '@/lib/ocr';
 import { BillScanner, type ScanResult } from './BillScanner';
 
 export function AddScreen() {
-  const { editing, startEdit, addExpense, updateExpense, expenses, budget, setBudget, addRecurring, showToast, setView } = useApp();
+  const { editing, startEdit, addExpense, updateExpense, expenses, budget, setBudget, addRecurring, sharedText, clearShared, showToast, setView } = useApp();
   const [amount, setAmount] = useState(''); const [date, setDate] = useState(todayISO()); const [category, setCategory] = useState<Category>('Food');
   const [currency, setCurrency] = useState<Currency>(homeCurrency()); const [note, setNote] = useState(''); const [scan, setScan] = useState<ScanResult | null>(null);
   const [newCat, setNewCat] = useState<string | null>(null); // non-null = the "new category" input is open
@@ -20,6 +22,18 @@ export function AddScreen() {
     if (editing) { setAmount(String(editing.amount)); setDate(editing.date); setCategory(editing.category); setCurrency(editing.currency); setNote(editing.note); }
     else { setAmount(''); setDate(todayISO()); setCategory('Food'); setCurrency(homeCurrency()); setNote(''); setScan(null); setRepeat(false); }
   }, [editing]);
+
+  // Prefill from a message shared via the Android share sheet; the raw text is parsed and discarded.
+  useEffect(() => {
+    if (!sharedText || editing) return;
+    const p = parseSms(sharedText);
+    if (p.amount != null) setAmount(String(p.amount));
+    if (p.vendor) setNote(p.vendor);
+    if (p.date) setDate(p.date);
+    setCategory(guessCategory(sharedText));
+    showToast(p.debit ? 'Read from the shared message — check and save' : 'Looks like money received, not spent — check before saving');
+    clearShared();
+  }, [sharedText, editing, clearShared, showToast]);
 
   function applyScan(r: ScanResult) {
     setScan(r); if (r.total != null) setAmount(String(r.total)); if (r.date) setDate(r.date); if (r.vendor) setNote(r.vendor); setCategory(r.category);

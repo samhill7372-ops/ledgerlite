@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AppProvider, useApp } from '@/store/useApp';
 import { AuthScreen } from '@/features/auth/AuthScreen';
 import { HomeScreen } from '@/features/home/HomeScreen';
@@ -12,8 +12,10 @@ import { Toast } from '@/components/Toast';
 import type { RangeKey } from '@/lib/dates';
 
 function Shell() {
-  const { ready, session, needsUnlock, view, setView } = useApp();
+  const { ready, session, needsUnlock, view, setView, sharedText } = useApp();
   const [listRange, setListRange] = useState<RangeKey | undefined>(undefined);
+  // A message shared from the Android share sheet lands on the Add screen.
+  useEffect(() => { if (session && !needsUnlock && sharedText) setView('add'); }, [session, needsUnlock, sharedText, setView]);
   if (!ready) return null;
   if (!session || needsUnlock) return <><AuthScreen /><Toast /></>;
   return (
