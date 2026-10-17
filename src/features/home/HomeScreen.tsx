@@ -4,6 +4,7 @@ import { fmt } from '@/lib/money';
 import { todayISO } from '@/lib/dates';
 import { computePace, monthExpenses, byCategory, buildAlerts } from '@/lib/budget';
 import { ExpenseRow } from '@/components/ExpenseRow';
+import { CurrencyPicker } from '@/components/CurrencyPicker';
 
 const PILL: Record<string, [string, string]> = { none: ['No budget set', ''], 'on-track': ['On track', 'good'], 'over-pace': ['Over pace', 'warn'], 'over-budget': ['Over budget', 'bad'] };
 
@@ -39,6 +40,8 @@ export function HomeScreen() {
           <button className="signout" onClick={signOut}>Sign out</button>
         </div>
       </header>
+
+      <CurrencyPicker />
 
       <div className="hero-wrap">
         <div className="stat hero">

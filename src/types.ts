@@ -10,7 +10,7 @@ export function allCategories(budget?: { customCats?: string[] }): Category[] {
   return out;
 }
 
-export type Currency = 'INR' | 'USD' | 'EUR' | 'CAD';
+export type Currency = 'INR' | 'USD' | 'EUR' | 'GBP' | 'CAD' | 'AUD' | 'SGD' | 'AED' | 'JPY';
 
 export interface Expense {
   id: string;
@@ -30,6 +30,8 @@ export interface Budget {
   cats: Partial<Record<Category, number>>;
   /** User-defined category names (encrypted with the rest of the blob). */
   customCats?: string[];
+  /** The user's home currency: budgets, totals and new expenses use it. Unset = not chosen yet. */
+  currency?: Currency;
 }
 
 export interface WrappedKey { salt: string; iv: string; key: string }

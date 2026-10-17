@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { useApp } from '@/store/useApp';
 import { allCategories, type Expense } from '@/types';
-import { fmt } from '@/lib/money';
+import { fmt, homeCurrency } from '@/lib/money';
 import { inRange, monthLabel, todayISO, type RangeKey } from '@/lib/dates';
 import { monthlyTotals } from '@/lib/budget';
 import { toCsv, importCsv, type ImportResult } from '@/lib/csv';
@@ -33,7 +33,7 @@ export function ExpensesScreen({ initialRange }: { initialRange?: RangeKey }) {
 
   async function pickFile(f: File | undefined) {
     if (!f) return;
-    const res = importCsv(await f.text(), allCategories(budget));
+    const res = importCsv(await f.text(), allCategories(budget), homeCurrency());
     if (res.error) showToast(res.error);
     else if (!res.rows.length) showToast('No usable rows found in that file');
     else setPreview(res);

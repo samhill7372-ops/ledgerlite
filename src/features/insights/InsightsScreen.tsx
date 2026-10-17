@@ -1,7 +1,8 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { useApp } from '@/store/useApp';
 import { allCategories, type Budget, type Category } from '@/types';
-import { fmt } from '@/lib/money';
+import { CURRENCIES, SYMBOL, fmt, homeCurrency } from '@/lib/money';
+import type { Currency } from '@/types';
 import { daysInMonth, lastNMonthKeys, monthLabel } from '@/lib/dates';
 import { computePace, monthExpenses, byCategory, monthlyTotals, buildAlerts } from '@/lib/budget';
 
@@ -102,12 +103,13 @@ function RecurringPanel() {
 function BudgetPanel({ budget, pace, alerts, onSave }: { budget: Budget; pace: ReturnType<typeof computePace>; alerts: ReturnType<typeof buildAlerts>; onSave: (b: Budget) => Promise<void> }) {
   const [open, setOpen] = useState(false);
   const [total, setTotal] = useState(''); const [cats, setCats] = useState<Record<string, string>>({});
+  const [cur, setCur] = useState<Currency>(budget.currency ?? homeCurrency());
   const names = allCategories(budget);
-  function edit() { setTotal(budget.total ? String(budget.total) : ''); setCats(Object.fromEntries(names.map((c) => [c, budget.cats[c] ? String(budget.cats[c]) : '']))); setOpen(true); }
+  function edit() { setTotal(budget.total ? String(budget.total) : ''); setCur(budget.currency ?? homeCurrency()); setCats(Object.fromEntries(names.map((c) => [c, budget.cats[c] ? String(budget.cats[c]) : '']))); setOpen(true); }
   async function submit(ev: FormEvent) {
     ev.preventDefault();
     const c: Budget['cats'] = {}; for (const k of names) { const v = parseFloat(cats[k]); if (v > 0) c[k] = v; }
-    await onSave({ total: parseFloat(total) || 0, cats: c, customCats: budget.customCats }); setOpen(false);
+    await onSave({ total: parseFloat(total) || 0, cats: c, customCats: budget.customCats, currency: cur }); setOpen(false);
   }
   return (
     <div className="panel">
@@ -116,7 +118,12 @@ function BudgetPanel({ budget, pace, alerts, onSave }: { budget: Budget; pace: R
       <div>{alerts.map((a, i) => <div key={i} className={'alert ' + a.level}>{a.message}</div>)}</div>
       {open && (
         <form className="bform" onSubmit={submit}>
-          <label>Total monthly budget (₹)<input type="number" min="0" step="1" inputMode="numeric" placeholder="e.g. 20000" value={total} onChange={(e) => setTotal(e.target.value)} /></label>
+          <label>Total monthly budget ({SYMBOL[cur]})<input type="number" min="0" step="1" inputMode="numeric" placeholder="e.g. 20000" value={total} onChange={(e) => setTotal(e.target.value)} /></label>
+          <label>Currency
+            <select value={cur} onChange={(e) => setCur(e.target.value as Currency)}>
+              {CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
+            </select>
+          </label>
           <div className="eyebrow">Per category (optional)</div>
           <div className="grid">
             {names.map((c) => <label key={c}>{c}<input type="number" min="0" inputMode="numeric" placeholder="—" value={cats[c] ?? ''} onChange={(e) => setCats((s) => ({ ...s, [c]: e.target.value }))} /></label>)}

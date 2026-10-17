@@ -5,7 +5,9 @@
  * separators, and skips rows it cannot understand rather than failing.
  */
 import type { Category, Currency, Expense } from '@/types';
-import { round2 } from '@/lib/money';
+import { CURRENCIES, round2 } from '@/lib/money';
+
+const CODES = new Set<string>(CURRENCIES.map((c) => c.code));
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const q = (s: string) => (/[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s);
@@ -77,7 +79,7 @@ export interface ImportedRow { date: string; amount: number; note: string; categ
 export interface ImportResult { rows: ImportedRow[]; skipped: number; error?: string }
 
 /** Map arbitrary CSV text to expense rows. `categories` = the user's full category list. */
-export function importCsv(text: string, categories: string[]): ImportResult {
+export function importCsv(text: string, categories: string[], defaultCurrency: Currency = 'INR'): ImportResult {
   const grid = parseCsv(text);
   if (grid.length < 2) return { rows: [], skipped: 0, error: 'The file has no data rows.' };
   const header = grid[0];
@@ -97,7 +99,7 @@ export function importCsv(text: string, categories: string[]): ImportResult {
       date, amount,
       note: ci.note >= 0 ? (r[ci.note] ?? '').trim().slice(0, 80) : '',
       category: catByLower.get(rawCat) ?? 'Other',
-      currency: (['INR', 'USD', 'EUR', 'CAD'].includes(rawCur) ? rawCur : 'INR') as Currency,
+      currency: (CODES.has(rawCur) ? rawCur : defaultCurrency) as Currency,
     });
   }
   return { rows, skipped };

@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useApp } from '@/store/useApp';
 import { allCategories, type Category, type Currency, type Expense, type RecurringRule } from '@/types';
-import { SYMBOL, round2 } from '@/lib/money';
+import { CURRENCIES, SYMBOL, homeCurrency, round2 } from '@/lib/money';
 import { todayISO } from '@/lib/dates';
 import { afterAddMessage } from '@/lib/budget';
 import { BillScanner, type ScanResult } from './BillScanner';
@@ -9,7 +9,7 @@ import { BillScanner, type ScanResult } from './BillScanner';
 export function AddScreen() {
   const { editing, startEdit, addExpense, updateExpense, expenses, budget, setBudget, addRecurring, showToast, setView } = useApp();
   const [amount, setAmount] = useState(''); const [date, setDate] = useState(todayISO()); const [category, setCategory] = useState<Category>('Food');
-  const [currency, setCurrency] = useState<Currency>('INR'); const [note, setNote] = useState(''); const [scan, setScan] = useState<ScanResult | null>(null);
+  const [currency, setCurrency] = useState<Currency>(homeCurrency()); const [note, setNote] = useState(''); const [scan, setScan] = useState<ScanResult | null>(null);
   const [newCat, setNewCat] = useState<string | null>(null); // non-null = the "new category" input is open
   const [repeat, setRepeat] = useState(false);
   const cats = allCategories(budget);
@@ -17,7 +17,7 @@ export function AddScreen() {
 
   useEffect(() => {
     if (editing) { setAmount(String(editing.amount)); setDate(editing.date); setCategory(editing.category); setCurrency(editing.currency); setNote(editing.note); }
-    else { setAmount(''); setDate(todayISO()); setCategory('Food'); setCurrency('INR'); setNote(''); setScan(null); setRepeat(false); }
+    else { setAmount(''); setDate(todayISO()); setCategory('Food'); setCurrency(homeCurrency()); setNote(''); setScan(null); setRepeat(false); }
   }, [editing]);
 
   function applyScan(r: ScanResult) {
@@ -101,7 +101,7 @@ export function AddScreen() {
           <label>Vendor / note <input type="text" id="note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Metro ticket, Big Bazaar" maxLength={80} /></label>
           <label>Currency
             <select id="currency" value={currency} onChange={(e) => setCurrency(e.target.value as Currency)}>
-              <option value="INR">INR ₹</option><option value="USD">USD $</option><option value="EUR">EUR €</option><option value="CAD">CAD $</option>
+              {CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
             </select>
           </label>
           {!editing && (

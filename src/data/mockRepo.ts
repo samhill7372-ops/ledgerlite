@@ -88,7 +88,7 @@ export class MockAuth implements AuthApi {
       list.push(d); this.save(list);
       const repos = mockRepos(this.vault, d.id);
       await repos.expenses.replaceAll(seedExpenses());
-      await repos.budgets.set({ total: 20000, cats: { Food: 4000, Groceries: 5000, Travel: 2000, Bills: 3000, Shopping: 3000, Health: 1500, Other: 1500 } });
+      await repos.budgets.set({ total: 20000, cats: { Food: 4000, Groceries: 5000, Travel: 2000, Bills: 3000, Shopping: 3000, Health: 1500, Other: 1500 }, currency: 'INR' });
     } else await this.vault.unlock(d.byPassword, 'demo-pass');
     safe.set(SESSION, d.id); return toSession(d);
   }
