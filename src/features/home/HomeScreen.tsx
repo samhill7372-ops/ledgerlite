@@ -77,6 +77,11 @@ export function HomeScreen() {
           {recent.length ? recent.map((e) => <ExpenseRow key={e.id} e={e} />) : <li className="empty" style={{ display: 'block' }}>No expenses yet. Tap Add to log your first one, or scan a bill.</li>}
         </ul>
       </div>
+
+      <div className="panel locked" aria-label="Coming soon">
+        <div className="panel-head"><h2>Shared spaces</h2><span className="pill">🔒 coming in v2</span></div>
+        <p className="note">A family ledger with one common budget, and trip expenses split with friends — who paid, who owes whom. Encrypted like everything else.</p>
+      </div>
     </section>
   );
 }
