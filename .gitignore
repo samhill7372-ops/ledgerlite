@@ -4,6 +4,7 @@ dev-dist
 .env
 .env.local
 .env.*.local
+supabase/.temp
 *.log
 .DS_Store
 .vscode
