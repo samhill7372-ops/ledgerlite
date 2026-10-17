@@ -41,4 +41,11 @@ describe('parseSms', () => {
     const p = parseSms('Your OTP is 123456. Do not share it.');
     expect(p.amount).toBeNull();
   });
+  it('reads the HDFC UPI "Sent ... From ... To ... On" format (multi-line)', () => {
+    const p = parseSms('Sent Rs.2500.00\nFrom HDFC Bank A/C *8019\nTo OXYGEN FUELS\nOn 10/10/26\nRef 131051566603\nNot You?\nCall 18002586161/SMS BLOCK UPI to 7308080808');
+    expect(p.amount).toBe(2500);
+    expect(p.vendor).toBe('OXYGEN FUELS');
+    expect(p.date).toBe('2026-10-10');
+    expect(p.debit).toBe(true);
+  });
 });

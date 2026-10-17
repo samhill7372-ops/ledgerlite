@@ -15,6 +15,7 @@ export function AddScreen() {
   const [currency, setCurrency] = useState<Currency>(homeCurrency()); const [note, setNote] = useState(''); const [scan, setScan] = useState<ScanResult | null>(null);
   const [newCat, setNewCat] = useState<string | null>(null); // non-null = the "new category" input is open
   const [repeat, setRepeat] = useState(false);
+  const [sms, setSms] = useState<string | null>(null); // non-null = the paste-SMS box is open
   const cats = allCategories(budget);
   const isCustom = (budget.customCats ?? []).includes(category);
 
@@ -23,17 +24,23 @@ export function AddScreen() {
     else { setAmount(''); setDate(todayISO()); setCategory('Food'); setCurrency(homeCurrency()); setNote(''); setScan(null); setRepeat(false); }
   }, [editing]);
 
-  // Prefill from a message shared via the Android share sheet; the raw text is parsed and discarded.
-  useEffect(() => {
-    if (!sharedText || editing) return;
-    const p = parseSms(sharedText);
+  // Parse a bank SMS (shared or pasted) ON DEVICE and prefill the form; the raw text is discarded.
+  function prefillFromText(text: string) {
+    const p = parseSms(text);
+    if (p.amount == null && !p.vendor && !p.date) { showToast("Couldn't find an amount in that message"); return; }
     if (p.amount != null) setAmount(String(p.amount));
     if (p.vendor) setNote(p.vendor);
     if (p.date) setDate(p.date);
-    setCategory(guessCategory(sharedText));
-    showToast(p.debit ? 'Read from the shared message — check and save' : 'Looks like money received, not spent — check before saving');
+    setCategory(guessCategory(text));
+    showToast(p.debit ? 'Read from the message — check and save' : 'Looks like money received, not spent — check before saving');
+  }
+
+  useEffect(() => {
+    if (!sharedText || editing) return;
+    prefillFromText(sharedText);
     clearShared();
-  }, [sharedText, editing, clearShared, showToast]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sharedText, editing]);
 
   function applyScan(r: ScanResult) {
     setScan(r); if (r.total != null) setAmount(String(r.total)); if (r.date) setDate(r.date); if (r.vendor) setNote(r.vendor); setCategory(r.category);
@@ -82,6 +89,21 @@ export function AddScreen() {
       <header><div><div className="eyebrow">{editing ? 'Edit' : 'New expense'}</div><h1>{editing ? 'Edit expense' : 'Add expense'}</h1></div></header>
       <div className="panel">
         {!editing && <BillScanner onResult={applyScan} onClear={() => setScan(null)} />}
+        {!editing && (sms === null
+          ? <p className="note" style={{ marginBottom: 10 }}>Got a bank SMS? <button type="button" className="seeall" onClick={async () => {
+              try { const t = await navigator.clipboard.readText(); if (t?.trim()) { prefillFromText(t); return; } } catch { /* no permission: show the box */ }
+              setSms('');
+            }}>Paste it</button> — read on your phone, never stored.</p>
+          : <div style={{ marginBottom: 12 }}>
+              <label>Paste the message
+                <textarea value={sms} onChange={(e) => setSms(e.target.value)} rows={3} placeholder="e.g. Sent Rs.2500.00 From HDFC Bank A/C *8019 To OXYGEN FUELS On 10/10/26"
+                  style={{ width: '100%', resize: 'vertical' }} autoFocus />
+              </label>
+              <div className="actions">
+                <button type="button" className="btn sm primary" onClick={() => { if (sms.trim()) prefillFromText(sms); setSms(null); }}>Read message</button>
+                <button type="button" className="btn sm" onClick={() => setSms(null)}>Cancel</button>
+              </div>
+            </div>)}
         <form onSubmit={submit} autoComplete="off">
           <label>Amount
             <span className="amount-wrap"><span>{SYMBOL[currency]}</span>
