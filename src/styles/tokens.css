@@ -3,7 +3,7 @@
   --bg:#0b1020; --surface:#131a2e; --surface-2:#1b2440; --line:#273252;
   --fg:#f1f4fb; --muted:#8e98b8; --accent:#3d7bff; --accent-fg:#ffffff; --accent-soft:#17264d;
   --glow:#5ea0ff; --good:#36d399; --warn:#f5b547; --bad:#ff5c7a;
-  --display:"Sora","Manrope",system-ui,sans-serif;
-  --body:"Manrope",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --display:"Outfit","Plus Jakarta Sans",system-ui,sans-serif;
+  --body:"Plus Jakarta Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
   --radius:14px; color-scheme:dark;
 }
