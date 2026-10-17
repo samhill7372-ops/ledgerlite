@@ -8,12 +8,10 @@ import { useEffect, useState } from 'react';
  * - iOS has no such event: show the Share → Add to Home Screen tip once.
  * - Already installed but opened in a browser tab (we remember installs in
  *   localStorage): nudge to use the home-screen app instead.
- * Never shown when running installed (standalone) or after being dismissed.
+ * Shown on every visit until installed; dismissing hides it for that visit only.
  */
 type BIPEvent = Event & { prompt(): Promise<void>; userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }> };
-const DISMISSED = 'll.install.dismissed.v1';
 const INSTALLED = 'll.pwa.installed.v1';
-const OPEN_DISMISSED = 'll.openapp.dismissed.v1';
 
 const store = {
   get(k: string) { try { return localStorage.getItem(k); } catch { return null; } },
@@ -33,10 +31,11 @@ export function InstallPrompt() {
   const [bip, setBip] = useState<BIPEvent | null>(null);
   const [mode, setMode] = useState<Mode | null>(null);
 
+  // "Later"/"Got it" hide the banner for this visit only: it returns on the
+  // next open and only goes quiet for good once the app is installed.
   useEffect(() => {
-    if (isStandalone()) { store.set(INSTALLED); return; } // running as the app: remember and stay quiet
-    if (store.get(INSTALLED)) { if (!store.get(OPEN_DISMISSED)) setMode('openapp'); return; }
-    if (store.get(DISMISSED)) return;
+    if (isStandalone()) { store.set(INSTALLED); return; } // running as the app: stay quiet
+    if (store.get(INSTALLED)) { setMode('openapp'); return; }
     if (/iphone|ipad|ipod/i.test(navigator.userAgent)) { setMode('ios'); return; }
     const onPrompt = (e: Event) => { e.preventDefault(); setBip(e as BIPEvent); setMode('install'); };
     const onInstalled = () => { store.set(INSTALLED); setMode(null); };
@@ -45,11 +44,12 @@ export function InstallPrompt() {
     return () => { window.removeEventListener('beforeinstallprompt', onPrompt); window.removeEventListener('appinstalled', onInstalled); };
   }, []);
 
-  function dismiss() { store.set(mode === 'openapp' ? OPEN_DISMISSED : DISMISSED); setMode(null); }
+  function dismiss() { setMode(null); } // this visit only
   async function install() {
     if (!bip) return;
     await bip.prompt();
-    if ((await bip.userChoice).outcome === 'accepted') { store.set(INSTALLED); setMode(null); } else dismiss();
+    if ((await bip.userChoice).outcome === 'accepted') { store.set(INSTALLED); }
+    setMode(null);
   }
 
   if (!mode) return null;
