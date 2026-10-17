@@ -1,22 +1,23 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useApp } from '@/store/useApp';
-import { allCategories, type Category, type Currency, type Expense } from '@/types';
+import { allCategories, type Category, type Currency, type Expense, type RecurringRule } from '@/types';
 import { SYMBOL, round2 } from '@/lib/money';
 import { todayISO } from '@/lib/dates';
 import { afterAddMessage } from '@/lib/budget';
 import { BillScanner, type ScanResult } from './BillScanner';
 
 export function AddScreen() {
-  const { editing, startEdit, addExpense, updateExpense, expenses, budget, setBudget, showToast, setView } = useApp();
+  const { editing, startEdit, addExpense, updateExpense, expenses, budget, setBudget, addRecurring, showToast, setView } = useApp();
   const [amount, setAmount] = useState(''); const [date, setDate] = useState(todayISO()); const [category, setCategory] = useState<Category>('Food');
   const [currency, setCurrency] = useState<Currency>('INR'); const [note, setNote] = useState(''); const [scan, setScan] = useState<ScanResult | null>(null);
   const [newCat, setNewCat] = useState<string | null>(null); // non-null = the "new category" input is open
+  const [repeat, setRepeat] = useState(false);
   const cats = allCategories(budget);
   const isCustom = (budget.customCats ?? []).includes(category);
 
   useEffect(() => {
     if (editing) { setAmount(String(editing.amount)); setDate(editing.date); setCategory(editing.category); setCurrency(editing.currency); setNote(editing.note); }
-    else { setAmount(''); setDate(todayISO()); setCategory('Food'); setCurrency('INR'); setNote(''); setScan(null); }
+    else { setAmount(''); setDate(todayISO()); setCategory('Food'); setCurrency('INR'); setNote(''); setScan(null); setRepeat(false); }
   }, [editing]);
 
   function applyScan(r: ScanResult) {
@@ -48,7 +49,16 @@ export function AddScreen() {
       showToast('Updated'); startEdit(null); setView('expenses');
     } else {
       const e: Expense = { id: crypto.randomUUID(), amount: round2(amt), currency, category, date, note: note.trim(), source: scan ? 'receipt' : 'manual', ocrRawText: scan?.rawText, createdAt: now, updatedAt: now };
-      await addExpense(e); showToast(afterAddMessage([...expenses, e], budget, e)); setView('home');
+      await addExpense(e);
+      if (repeat) {
+        const rule: RecurringRule = {
+          id: crypto.randomUUID(), amount: round2(amt), currency, category, note: note.trim() || category,
+          dayOfMonth: Number(date.slice(8, 10)), startDate: date, lastRun: date, createdAt: now, updatedAt: now,
+        };
+        await addRecurring(rule);
+        showToast(`Added. Will repeat monthly on day ${rule.dayOfMonth}`);
+      } else showToast(afterAddMessage([...expenses, e], budget, e));
+      setView('home');
     }
   }
 
@@ -94,6 +104,12 @@ export function AddScreen() {
               <option value="INR">INR ₹</option><option value="USD">USD $</option><option value="EUR">EUR €</option><option value="CAD">CAD $</option>
             </select>
           </label>
+          {!editing && (
+            <label className="check">
+              <input type="checkbox" checked={repeat} onChange={(e) => setRepeat(e.target.checked)} />
+              <span>Repeat monthly (rent, EMI, subscription) — logged automatically on day {Number(date.slice(8, 10)) || '…'}</span>
+            </label>
+          )}
           <div className="actions">
             <button type="submit" className="btn primary" id="saveBtn">{editing ? 'Save changes' : 'Add expense'}</button>
             {editing && <button type="button" className="btn" style={{ flex: '0 0 auto' }} onClick={() => { startEdit(null); setView('expenses'); }}>Cancel</button>}

@@ -2,8 +2,8 @@
  * Browser-only backend: encrypted localStorage, namespaced per user.
  * Lets Zone 3 run with no network. Also the shape of the future offline cache.
  */
-import type { Budget, Expense, Profile } from '@/types';
-import type { BudgetRepo, ExpenseRepo, Repos } from './repo';
+import type { Budget, Expense, Profile, RecurringRule } from '@/types';
+import type { BudgetRepo, ExpenseRepo, RecurringRepo, Repos } from './repo';
 import type { AuthApi, Session } from '@/auth/api';
 import { AuthError, toSession } from '@/auth/api';
 import { saveSessionKey, loadSessionKey, clearSessionKeys } from '@/auth/keystore';
@@ -34,6 +34,15 @@ class MockBudgetRepo implements BudgetRepo {
     try { return await this.vault.decryptJSON<Budget>(raw); } catch { return null; }
   }
   async set(b: Budget) { safe.set(this.key, await this.vault.encryptJSON(b)); }
+}
+
+class MockRecurringRepo implements RecurringRepo {
+  constructor(private vault: Vault, private key: string) {}
+  async list(): Promise<RecurringRule[]> {
+    const raw = safe.get(this.key); if (!raw) return [];
+    try { return await this.vault.decryptJSON<RecurringRule[]>(raw); } catch { return []; }
+  }
+  async saveAll(rules: RecurringRule[]) { safe.set(this.key, await this.vault.encryptJSON(rules)); }
 }
 
 const USERS = 'll.users.v1', SESSION = 'll.session.v1';
@@ -86,5 +95,5 @@ export class MockAuth implements AuthApi {
 }
 
 export function mockRepos(vault: Vault, userId: string): Repos {
-  return { expenses: new MockExpenseRepo(vault, `ll.${userId}.expenses.v1`), budgets: new MockBudgetRepo(vault, `ll.${userId}.budget.v1`) };
+  return { expenses: new MockExpenseRepo(vault, `ll.${userId}.expenses.v1`), budgets: new MockBudgetRepo(vault, `ll.${userId}.budget.v1`), recurring: new MockRecurringRepo(vault, `ll.${userId}.recurring.v1`) };
 }

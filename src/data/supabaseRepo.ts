@@ -3,8 +3,8 @@
  * only ever stores `payload` ciphertext. RLS (see supabase/migrations) makes
  * sure a user can only touch their own rows.
  */
-import type { Budget, Expense, Profile, WrappedKey } from '@/types';
-import type { BudgetRepo, ExpenseRepo, Repos } from './repo';
+import type { Budget, Expense, Profile, RecurringRule, WrappedKey } from '@/types';
+import type { BudgetRepo, ExpenseRepo, RecurringRepo, Repos } from './repo';
 import type { AuthApi, Session } from '@/auth/api';
 import { AuthError } from '@/auth/api';
 import { saveSessionKey, loadSessionKey, clearSessionKeys } from '@/auth/keystore';
@@ -49,6 +49,20 @@ class SbBudgetRepo implements BudgetRepo {
   }
   async set(b: Budget) {
     const { error } = await supabase().from('budgets').upsert({ user_id: this.userId, payload: await this.vault.encryptJSON(b) });
+    if (error) throw error;
+  }
+}
+
+class SbRecurringRepo implements RecurringRepo {
+  constructor(private vault: Vault, private userId: string) {}
+  async list(): Promise<RecurringRule[]> {
+    const { data, error } = await supabase().from('recurring').select('payload').eq('user_id', this.userId).maybeSingle();
+    if (error) throw error;
+    if (!data) return [];
+    try { return await this.vault.decryptJSON<RecurringRule[]>(data.payload); } catch { return []; }
+  }
+  async saveAll(rules: RecurringRule[]) {
+    const { error } = await supabase().from('recurring').upsert({ user_id: this.userId, payload: await this.vault.encryptJSON(rules) });
     if (error) throw error;
   }
 }
@@ -120,5 +134,5 @@ export class SupabaseAuth implements AuthApi {
 }
 
 export function supabaseRepos(vault: Vault, userId: string): Repos {
-  return { expenses: new SbExpenseRepo(vault, userId), budgets: new SbBudgetRepo(vault, userId) };
+  return { expenses: new SbExpenseRepo(vault, userId), budgets: new SbBudgetRepo(vault, userId), recurring: new SbRecurringRepo(vault, userId) };
 }

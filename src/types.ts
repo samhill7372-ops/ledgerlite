@@ -19,7 +19,7 @@ export interface Expense {
   category: Category;
   date: string;            // YYYY-MM-DD
   note: string;            // vendor / note
-  source: 'manual' | 'receipt';
+  source: 'manual' | 'receipt' | 'recurring';
   ocrRawText?: string;
   createdAt: string;       // ISO timestamp
   updatedAt: string;
@@ -41,6 +41,22 @@ export interface Profile {
   byPassword: WrappedKey;
   byRecovery: WrappedKey;
   createdAt: string;
+}
+
+/** A monthly repeating expense (rent, EMI, subscription). Stored encrypted. */
+export interface RecurringRule {
+  id: string;
+  amount: number;
+  currency: Currency;
+  category: Category;
+  note: string;            // e.g. "Rent", "Netflix"
+  dayOfMonth: number;      // 1..31, clamped to the month's length
+  startDate: string;       // YYYY-MM-DD; first occurrence is in this month
+  endDate?: string;        // optional last date an occurrence may fall on
+  paused?: boolean;
+  lastRun?: string;        // date of the last materialized occurrence
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type AlertLevel = 'warn' | 'bad';

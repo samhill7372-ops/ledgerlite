@@ -13,7 +13,7 @@ export function ExpenseRow({ e }: { e: Expense }) {
       <div className="t">
         <b>{e.note || e.category}</b>
         <small>{dfmt.format(new Date(e.date))}{e.date === todayISO() ? ' · today' : ''}
-          <span className={'src ' + (e.source === 'receipt' ? 'receipt' : '')}>{e.source === 'receipt' ? 'scanned' : 'manual'}</span></small>
+          <span className={'src ' + (e.source !== 'manual' ? 'receipt' : '')}>{e.source === 'receipt' ? 'scanned' : e.source === 'recurring' ? 'auto' : 'manual'}</span></small>
       </div>
       <div className="a">
         <b className="num">{fmt(e.amount, e.currency)}</b>

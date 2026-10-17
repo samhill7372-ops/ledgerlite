@@ -25,6 +25,8 @@ export function InsightsScreen({ onPickMonth }: { onPickMonth: (key: string) => 
 
       <BudgetPanel budget={budget} pace={pace} alerts={alerts} onSave={async (b) => { await setBudget(b); showToast('Budget saved'); }} />
 
+      <RecurringPanel />
+
       <div className="panel">
         <div className="panel-head"><h2>By category</h2><span className="eyebrow">this month</span></div>
         <div className="cats">
@@ -66,6 +68,34 @@ export function InsightsScreen({ onPickMonth }: { onPickMonth: (key: string) => 
         </div>
       </div>
     </section>
+  );
+}
+
+function RecurringPanel() {
+  const { recurring, updateRecurring, showToast } = useApp();
+  if (!recurring.length) return null;
+  const toggle = (id: string) => updateRecurring(recurring.map((r) => (r.id === id ? { ...r, paused: !r.paused, updatedAt: new Date().toISOString() } : r)));
+  const del = async (id: string) => { await updateRecurring(recurring.filter((r) => r.id !== id)); showToast('Recurring expense removed'); };
+  return (
+    <div className="panel">
+      <div className="panel-head"><h2>Recurring</h2><span className="eyebrow">every month</span></div>
+      <ul className="ledger">
+        {recurring.map((r) => (
+          <li key={r.id}>
+            <div className="cat" data-c={r.category}>{r.category}</div>
+            <div className="t"><b>{r.note}</b><small>day {r.dayOfMonth}{r.paused ? ' · paused' : ''}</small></div>
+            <div className="a">
+              <b className="num">{fmt(r.amount, r.currency)}</b>
+              <div className="tools">
+                <button onClick={() => toggle(r.id)}>{r.paused ? 'Resume' : 'Pause'}</button>
+                <button className="del" onClick={() => del(r.id)}>Delete</button>
+              </div>
+            </div>
+          </li>
+        ))}
+      </ul>
+      <p className="note" style={{ marginTop: 8 }}>Logged automatically when you open the app each month. Deleting a rule keeps past expenses.</p>
+    </div>
   );
 }
 

@@ -3,11 +3,13 @@
  * Screens read from here and call the actions; they never touch repos directly.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { Budget, Expense } from '@/types';
+import type { Budget, Expense, RecurringRule } from '@/types';
 import type { Repos } from '@/data/repo';
 import type { AuthApi, Session } from '@/auth/api';
 import { createAuth, createRepos, vault } from '@/data';
 import { seedExpenses } from '@/data/seed';
+import { materialize } from '@/lib/recurring';
+import { todayISO } from '@/lib/dates';
 
 export type View = 'home' | 'expenses' | 'add' | 'insights';
 export interface Toast { id: number; text: string; undo?: () => void }
@@ -20,6 +22,7 @@ interface AppState {
   needsUnlock: boolean;
   expenses: Expense[];
   budget: Budget;
+  recurring: RecurringRule[];
   view: View;
   editing: Expense | null;
   toast: Toast | null;
@@ -32,6 +35,8 @@ interface AppState {
   deleteExpense(id: string): Promise<void>;
   resetData(): Promise<void>;
   setBudget(b: Budget): Promise<void>;
+  addRecurring(rule: RecurringRule): Promise<void>;
+  updateRecurring(rules: RecurringRule[]): Promise<void>;
   showToast(text: string, undo?: () => void): void;
 }
 
@@ -46,6 +51,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [repos, setRepos] = useState<Repos | null>(null);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [budget, setBudgetState] = useState<Budget>(EMPTY_BUDGET);
+  const [recurring, setRecurring] = useState<RecurringRule[]>([]);
   const [view, setView] = useState<View>('home');
   const [editing, setEditing] = useState<Expense | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
@@ -72,14 +78,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const onSignedIn = useCallback(async (s: Session, fresh: boolean) => {
     const r = await createRepos(s.userId);
     setRepos(r); setSession(s); setNeedsUnlock(false);
+    // Materialize any recurring occurrences that came due since the last open.
+    let rules: RecurringRule[] = [];
+    try {
+      rules = await r.recurring.list();
+      const mat = materialize(rules, todayISO());
+      if (mat.changed) {
+        for (const e of mat.expenses) await r.expenses.upsert(e);
+        await r.recurring.saveAll(mat.rules);
+        rules = mat.rules;
+        if (mat.expenses.length) showToast(`Added ${mat.expenses.length} recurring expense${mat.expenses.length === 1 ? '' : 's'}`);
+      }
+    } catch { /* recurring is best-effort; the ledger still loads */ }
+    setRecurring(rules);
     setExpenses(await r.expenses.list());
     setBudgetState((await r.budgets.get()) ?? (fresh ? EMPTY_BUDGET : EMPTY_BUDGET));
     setView('home');
-  }, []);
+  }, [showToast]);
 
   const signOut = useCallback(async () => {
     await auth?.signOut(); vault.lock();
-    setSession(null); setRepos(null); setExpenses([]); setBudgetState(EMPTY_BUDGET); setNeedsUnlock(false); setEditing(null);
+    setSession(null); setRepos(null); setExpenses([]); setBudgetState(EMPTY_BUDGET); setRecurring([]); setNeedsUnlock(false); setEditing(null);
   }, [auth]);
 
   const addExpense = useCallback(async (e: Expense) => { if (!repos) return; await repos.expenses.upsert(e); setExpenses((l) => [...l, e]); }, [repos]);
@@ -96,11 +115,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await repos.expenses.replaceAll(list); setExpenses(list);
   }, [repos, session]);
   const setBudget = useCallback(async (b: Budget) => { if (!repos) return; await repos.budgets.set(b); setBudgetState(b); }, [repos]);
+  const addRecurring = useCallback(async (rule: RecurringRule) => { if (!repos) return; const next = [...recurring, rule]; await repos.recurring.saveAll(next); setRecurring(next); }, [repos, recurring]);
+  const updateRecurring = useCallback(async (rules: RecurringRule[]) => { if (!repos) return; await repos.recurring.saveAll(rules); setRecurring(rules); }, [repos]);
 
   const value = useMemo<AppState>(() => ({
-    ready, auth, session, needsUnlock, expenses, budget, view, editing, toast,
-    setView, startEdit: setEditing, onSignedIn, signOut, addExpense, updateExpense, deleteExpense, resetData, setBudget, showToast,
-  }), [ready, auth, session, needsUnlock, expenses, budget, view, editing, toast, onSignedIn, signOut, addExpense, updateExpense, deleteExpense, resetData, setBudget, showToast]);
+    ready, auth, session, needsUnlock, expenses, budget, recurring, view, editing, toast,
+    setView, startEdit: setEditing, onSignedIn, signOut, addExpense, updateExpense, deleteExpense, resetData, setBudget, addRecurring, updateRecurring, showToast,
+  }), [ready, auth, session, needsUnlock, expenses, budget, recurring, view, editing, toast, onSignedIn, signOut, addExpense, updateExpense, deleteExpense, resetData, setBudget, addRecurring, updateRecurring, showToast]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

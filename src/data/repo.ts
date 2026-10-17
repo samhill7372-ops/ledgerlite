@@ -4,7 +4,7 @@
  * Every implementation receives plaintext objects and is responsible for
  * encrypting before persisting and decrypting after loading, via the Vault.
  */
-import type { Budget, Expense } from '@/types';
+import type { Budget, Expense, RecurringRule } from '@/types';
 
 export interface ExpenseRepo {
   list(): Promise<Expense[]>;
@@ -19,4 +19,9 @@ export interface BudgetRepo {
   set(budget: Budget): Promise<void>;
 }
 
-export interface Repos { expenses: ExpenseRepo; budgets: BudgetRepo }
+export interface RecurringRepo {
+  list(): Promise<RecurringRule[]>;
+  saveAll(rules: RecurringRule[]): Promise<void>;
+}
+
+export interface Repos { expenses: ExpenseRepo; budgets: BudgetRepo; recurring: RecurringRepo }
