@@ -20,8 +20,8 @@ export function monthExpenses(expenses: Expense[], now = new Date()): Expense[] 
   return expenses.filter((e) => monthKeyOf(e.date) === k);
 }
 
-export function byCategory(expenses: Expense[]): Partial<Record<Category, number>> {
-  const out: Partial<Record<Category, number>> = {};
+export function byCategory(expenses: Expense[]): Record<Category, number> {
+  const out: Record<Category, number> = {};
   for (const e of expenses) out[e.category] = round2((out[e.category] ?? 0) + Number(e.amount));
   return out;
 }

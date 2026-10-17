@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { useApp } from '@/store/useApp';
-import { CATEGORIES, type Budget, type Category } from '@/types';
+import { allCategories, type Budget, type Category } from '@/types';
 import { fmt } from '@/lib/money';
 import { daysInMonth, lastNMonthKeys, monthLabel } from '@/lib/dates';
 import { computePace, monthExpenses, byCategory, monthlyTotals, buildAlerts } from '@/lib/budget';
@@ -72,11 +72,12 @@ export function InsightsScreen({ onPickMonth }: { onPickMonth: (key: string) => 
 function BudgetPanel({ budget, pace, alerts, onSave }: { budget: Budget; pace: ReturnType<typeof computePace>; alerts: ReturnType<typeof buildAlerts>; onSave: (b: Budget) => Promise<void> }) {
   const [open, setOpen] = useState(false);
   const [total, setTotal] = useState(''); const [cats, setCats] = useState<Record<string, string>>({});
-  function edit() { setTotal(budget.total ? String(budget.total) : ''); setCats(Object.fromEntries(CATEGORIES.map((c) => [c, budget.cats[c] ? String(budget.cats[c]) : '']))); setOpen(true); }
+  const names = allCategories(budget);
+  function edit() { setTotal(budget.total ? String(budget.total) : ''); setCats(Object.fromEntries(names.map((c) => [c, budget.cats[c] ? String(budget.cats[c]) : '']))); setOpen(true); }
   async function submit(ev: FormEvent) {
     ev.preventDefault();
-    const c: Budget['cats'] = {}; for (const k of CATEGORIES) { const v = parseFloat(cats[k]); if (v > 0) c[k] = v; }
-    await onSave({ total: parseFloat(total) || 0, cats: c }); setOpen(false);
+    const c: Budget['cats'] = {}; for (const k of names) { const v = parseFloat(cats[k]); if (v > 0) c[k] = v; }
+    await onSave({ total: parseFloat(total) || 0, cats: c, customCats: budget.customCats }); setOpen(false);
   }
   return (
     <div className="panel">
@@ -88,7 +89,7 @@ function BudgetPanel({ budget, pace, alerts, onSave }: { budget: Budget; pace: R
           <label>Total monthly budget (₹)<input type="number" min="0" step="1" inputMode="numeric" placeholder="e.g. 20000" value={total} onChange={(e) => setTotal(e.target.value)} /></label>
           <div className="eyebrow">Per category (optional)</div>
           <div className="grid">
-            {CATEGORIES.map((c) => <label key={c}>{c}<input type="number" min="0" inputMode="numeric" placeholder="—" value={cats[c] ?? ''} onChange={(e) => setCats((s) => ({ ...s, [c]: e.target.value }))} /></label>)}
+            {names.map((c) => <label key={c}>{c}<input type="number" min="0" inputMode="numeric" placeholder="—" value={cats[c] ?? ''} onChange={(e) => setCats((s) => ({ ...s, [c]: e.target.value }))} /></label>)}
           </div>
           <div className="actions"><button type="submit" className="btn primary">Save budget</button><button type="button" className="btn" style={{ flex: '0 0 auto' }} onClick={() => setOpen(false)}>Cancel</button></div>
         </form>

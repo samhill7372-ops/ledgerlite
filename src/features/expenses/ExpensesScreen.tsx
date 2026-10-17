@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react';
 import { useApp } from '@/store/useApp';
-import { CATEGORIES } from '@/types';
+import { allCategories } from '@/types';
 import { fmt } from '@/lib/money';
 import { inRange, monthLabel, type RangeKey } from '@/lib/dates';
 import { monthlyTotals } from '@/lib/budget';
 import { ExpenseRow } from '@/components/ExpenseRow';
 
 export function ExpensesScreen({ initialRange }: { initialRange?: RangeKey }) {
-  const { expenses, resetData, showToast } = useApp();
+  const { expenses, budget, resetData, showToast } = useApp();
   const [range, setRange] = useState<RangeKey>(initialRange ?? 'month');
   const [cat, setCat] = useState<string>('');
   const [q, setQ] = useState('');
@@ -45,7 +45,7 @@ export function ExpensesScreen({ initialRange }: { initialRange?: RangeKey }) {
             {months.map((m) => <option key={m} value={'m:' + m}>{monthLabel(m)}</option>)}
           </select>
           <button className="chip" aria-pressed={cat === ''} onClick={() => setCat('')}>All</button>
-          {CATEGORIES.map((c) => <button key={c} className="chip" aria-pressed={cat === c} onClick={() => setCat(c)}>{c}</button>)}
+          {allCategories(budget).map((c) => <button key={c} className="chip" aria-pressed={cat === c} onClick={() => setCat(c)}>{c}</button>)}
         </div>
         <p className="note" style={{ marginBottom: 10 }}>{list.length ? `${list.length} expense${list.length === 1 ? '' : 's'} · ${fmt(total)} total` : ''}</p>
         <ul className="ledger">

@@ -1,5 +1,4 @@
-import type { Alert, Budget, Category, Expense } from '@/types';
-import { CATEGORIES } from '@/types';
+import type { Alert, Budget, Expense } from '@/types';
 import { fmt } from '@/lib/money';
 import { byCategory, computePace, monthExpenses } from './pace';
 
@@ -18,7 +17,7 @@ export function buildAlerts(expenses: Expense[], budget: Budget, now = new Date(
     alerts.push({ level: 'warn', message: `You have used ${Math.round(p.ratio * 100)}% of your budget with ${p.daysLeft} day${p.daysLeft === 1 ? '' : 's'} left.` });
   }
   const cats = byCategory(monthExpenses(expenses, now));
-  for (const c of CATEGORIES as readonly Category[]) {
+  for (const c of Object.keys(budget.cats)) { // every category with a limit, custom included
     const limit = budget.cats[c]; const v = cats[c] ?? 0;
     if (!limit || limit <= 0) continue;
     if (v >= limit) alerts.push({ level: 'bad', category: c, message: `${c} is over its ${fmt(limit)} limit (${fmt(v)} spent).` });
