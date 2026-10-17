@@ -10,7 +10,8 @@ export function allCategories(budget?: { customCats?: string[] }): Category[] {
   return out;
 }
 
-export type Currency = 'INR' | 'USD' | 'EUR' | 'GBP' | 'CAD' | 'AUD' | 'SGD' | 'AED' | 'JPY';
+/** ISO 4217 code. The supported list (symbols, labels, regions) lives in src/lib/money.ts (CURRENCIES). */
+export type Currency = string;
 
 export interface Expense {
   id: string;

@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useApp } from '@/store/useApp';
 import { allCategories, type Category, type Currency, type Expense, type RecurringRule } from '@/types';
-import { CURRENCIES, SYMBOL, homeCurrency, round2 } from '@/lib/money';
+import { SYMBOL, homeCurrency, round2 } from '@/lib/money';
+import { CurrencyOptions } from '@/components/CurrencyOptions';
 import { todayISO } from '@/lib/dates';
 import { afterAddMessage } from '@/lib/budget';
 import { BillScanner, type ScanResult } from './BillScanner';
@@ -101,7 +102,7 @@ export function AddScreen() {
           <label>Vendor / note <input type="text" id="note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Metro ticket, Big Bazaar" maxLength={80} /></label>
           <label>Currency
             <select id="currency" value={currency} onChange={(e) => setCurrency(e.target.value as Currency)}>
-              {CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
+              <CurrencyOptions />
             </select>
           </label>
           {!editing && (

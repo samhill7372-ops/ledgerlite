@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useApp } from '@/store/useApp';
-import { CURRENCIES, guessCurrency } from '@/lib/money';
+import { guessCurrency } from '@/lib/money';
+import { CurrencyOptions } from '@/components/CurrencyOptions';
 import type { Currency } from '@/types';
 
 /** One-time home-currency choice for new accounts; stored in the encrypted budget blob. */
@@ -22,7 +23,7 @@ export function CurrencyPicker() {
       <p className="note">Budgets, totals and new expenses will use it. You can change it later when editing your budget.</p>
       <div className="actions" style={{ alignItems: 'stretch' }}>
         <select value={cur} onChange={(e) => setCur(e.target.value as Currency)} aria-label="Currency">
-          {CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
+          <CurrencyOptions />
         </select>
         <button className="btn primary" style={{ flex: '0 0 auto' }} disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
       </div>

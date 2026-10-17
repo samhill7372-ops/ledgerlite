@@ -1,7 +1,8 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { useApp } from '@/store/useApp';
 import { allCategories, type Budget, type Category } from '@/types';
-import { CURRENCIES, SYMBOL, fmt, homeCurrency } from '@/lib/money';
+import { SYMBOL, fmt, homeCurrency } from '@/lib/money';
+import { CurrencyOptions } from '@/components/CurrencyOptions';
 import type { Currency } from '@/types';
 import { daysInMonth, lastNMonthKeys, monthLabel } from '@/lib/dates';
 import { computePace, monthExpenses, byCategory, monthlyTotals, buildAlerts } from '@/lib/budget';
@@ -121,7 +122,7 @@ function BudgetPanel({ budget, pace, alerts, onSave }: { budget: Budget; pace: R
           <label>Total monthly budget ({SYMBOL[cur]})<input type="number" min="0" step="1" inputMode="numeric" placeholder="e.g. 20000" value={total} onChange={(e) => setTotal(e.target.value)} /></label>
           <label>Currency
             <select value={cur} onChange={(e) => setCur(e.target.value as Currency)}>
-              {CURRENCIES.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
+              <CurrencyOptions />
             </select>
           </label>
           <div className="eyebrow">Per category (optional)</div>
