@@ -6,7 +6,7 @@ import { RecoveryCodeModal } from './RecoveryCodeModal';
 type Mode = 'login' | 'signup' | 'recover';
 
 export function AuthScreen() {
-  const { auth, session, needsUnlock, onSignedIn, showToast } = useApp();
+  const { auth, session, needsUnlock, onSignedIn, signOut, showToast } = useApp();
   const [mode, setMode] = useState<Mode>('login');
   const [name, setName] = useState(''); const [email, setEmail] = useState(''); const [pass, setPass] = useState(''); const [code, setCode] = useState('');
   const [showPw, setShowPw] = useState(false); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
@@ -38,7 +38,8 @@ export function AuthScreen() {
     try { const s = await auth.demo(); await onSignedIn(s, false); } finally { setBusy(false); }
   }
 
-  const label = mode === 'login' ? 'Sign in' : mode === 'signup' ? 'Create account' : 'Reset password';
+  const unlocking = needsUnlock && !!session && mode === 'login';
+  const label = unlocking ? 'Unlock' : mode === 'login' ? 'Sign in' : mode === 'signup' ? 'Create account' : 'Reset password';
   return (
     <section className="auth">
       <div className="brand">
@@ -47,17 +48,17 @@ export function AuthScreen() {
         <p>Track daily spending, scan bills, stay within budget.</p>
       </div>
       <div className="panel">
-        {mode !== 'recover' && (
+        {!unlocking && mode !== 'recover' && (
           <div className="switch" role="tablist">
             <button role="tab" aria-selected={mode === 'login'} onClick={() => { setMode('login'); setErr(''); }}>Sign in</button>
             <button role="tab" aria-selected={mode === 'signup'} onClick={() => { setMode('signup'); setErr(''); }}>Create account</button>
           </div>
         )}
         {mode === 'recover' && <div style={{ marginBottom: 12 }}><h2>Reset password</h2><p className="note">Enter the recovery code you saved at sign-up and choose a new password.</p></div>}
-        {needsUnlock && session && mode === 'login' && <p className="note" style={{ marginBottom: 10 }}>Welcome back, {session.name.split(' ')[0]}. Enter your password to unlock your encrypted data.</p>}
+        {unlocking && <div style={{ marginBottom: 12 }}><h2>Welcome back, {session!.name.split(' ')[0]}</h2><p className="note">You're still signed in — enter your password to unlock your encrypted data on this device.</p></div>}
         <form onSubmit={submit} autoComplete="on">
           {mode === 'signup' && <label>Your name <input type="text" id="auName" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" placeholder="e.g. Sam" maxLength={40} required /></label>}
-          <label>Email <input type="email" id="auEmail" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" inputMode="email" placeholder="you@example.com" required /></label>
+          {!unlocking && <label>Email <input type="email" id="auEmail" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" inputMode="email" placeholder="you@example.com" required /></label>}
           {mode === 'recover' && <label>Recovery code <input type="text" id="auRecovery" value={code} onChange={(e) => setCode(e.target.value)} autoComplete="off" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX" style={{ textTransform: 'uppercase', fontFamily: 'ui-monospace, Menlo, monospace' }} required /></label>}
           <label>Password
             <span className="pw-wrap">
@@ -71,6 +72,7 @@ export function AuthScreen() {
           <button type="submit" className="btn primary" id="authBtn" disabled={busy} style={{ width: '100%' }}>{busy ? 'Working…' : label}</button>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
             {mode === 'login' && <button type="button" className="seeall" style={{ padding: '4px 0' }} onClick={() => { setMode('recover'); setErr(''); }}>Forgot password?</button>}
+            {unlocking && <button type="button" className="seeall" style={{ padding: '4px 0' }} onClick={() => { signOut(); setErr(''); }}>Not you? Use another account</button>}
             {mode === 'recover' && <button type="button" className="seeall" style={{ padding: '4px 0' }} onClick={() => { setMode('login'); setErr(''); }}>Back to sign in</button>}
           </div>
         </form>

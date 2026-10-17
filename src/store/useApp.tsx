@@ -53,10 +53,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     (async () => {
-      const a = await createAuth(); setAuth(a);
-      const s = await a.restore();
-      if (s) { setSession(s); setNeedsUnlock(true); }
-      setReady(true);
+      try {
+        const a = await createAuth(); setAuth(a);
+        const s = await a.restore();
+        if (s) { setSession(s); setNeedsUnlock(true); }
+      } catch { /* offline or restore failed: fall through to the auth screen */ }
+      finally { setReady(true); }
     })();
   }, []);
 
