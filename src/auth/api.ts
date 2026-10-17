@@ -7,7 +7,11 @@ import type { Profile } from '@/types';
 export interface Session { userId: string; email: string; name: string }
 
 export interface AuthApi {
-  /** Resolves the remembered session (if any). The vault is still LOCKED afterwards. */
+  /**
+   * Resolves the remembered session (if any). If this device holds a stored
+   * session key (see auth/keystore.ts) the vault comes back UNLOCKED;
+   * otherwise it stays locked and the UI asks for the password.
+   */
   restore(): Promise<Session | null>;
   signUp(name: string, email: string, password: string): Promise<{ session: Session; recoveryCode: string }>;
   /** Unlocks the vault. Throws on bad credentials. */

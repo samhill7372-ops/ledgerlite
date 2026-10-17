@@ -76,6 +76,22 @@ export class Vault {
 
   lock(): void { this.dek = null; }
 
+  /**
+   * A NON-EXTRACTABLE copy of the DEK for the browser's key store (IndexedDB),
+   * so the app can stay unlocked across reloads on this device. Its raw bytes
+   * can never be read back by any script; it can only encrypt/decrypt here.
+   */
+  async sessionKey(): Promise<CryptoKey | null> {
+    if (!this.dek) return null;
+    try {
+      const raw = await crypto.subtle.exportKey('raw', this.dek);
+      return crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
+    } catch { return null; } // dek already non-extractable (came from the key store)
+  }
+
+  /** Unlock from a stored session key (no password). Rewrap still requires a password or recovery unlock. */
+  unlockWithSessionKey(key: CryptoKey): void { this.dek = key; }
+
   async encrypt(plain: string): Promise<string> {
     if (!this.dek) throw new Error('Vault is locked');
     const iv = rand(12);

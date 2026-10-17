@@ -40,6 +40,26 @@ describe('Vault', () => {
     const v = new Vault();
     await expect(v.encrypt('x')).rejects.toThrow(/locked/);
   });
+
+  it('session key decrypts on a fresh vault but its bytes cannot be extracted', async () => {
+    const v = new Vault();
+    await v.createUserKeys('secret123');
+    const ct = await v.encrypt('stay unlocked');
+    const sk = await v.sessionKey();
+    expect(sk).not.toBeNull();
+    expect(sk!.extractable).toBe(false);
+    await expect(crypto.subtle.exportKey('raw', sk!)).rejects.toThrow();
+
+    const fresh = new Vault(); // "after a reload"
+    fresh.unlockWithSessionKey(sk!);
+    expect(fresh.locked).toBe(false);
+    expect(await fresh.decrypt(ct)).toBe('stay unlocked');
+    expect(await fresh.sessionKey()).toBeNull(); // non-extractable dek cannot be copied again
+  });
+
+  it('sessionKey is null while locked', async () => {
+    expect(await new Vault().sessionKey()).toBeNull();
+  });
 });
 
 describe('recovery code', () => {

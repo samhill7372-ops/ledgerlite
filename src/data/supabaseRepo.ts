@@ -7,6 +7,7 @@ import type { Budget, Expense, Profile, WrappedKey } from '@/types';
 import type { BudgetRepo, ExpenseRepo, Repos } from './repo';
 import type { AuthApi, Session } from '@/auth/api';
 import { AuthError } from '@/auth/api';
+import { saveSessionKey, loadSessionKey, clearSessionKeys } from '@/auth/keystore';
 import { Vault } from '@/lib/crypto';
 import { supabase } from './supabase';
 
@@ -55,6 +56,12 @@ class SbBudgetRepo implements BudgetRepo {
 export class SupabaseAuth implements AuthApi {
   constructor(private vault: Vault) {}
 
+  /** Stay unlocked on this device: store the non-extractable session key. */
+  private async persistKey(userId: string) {
+    const k = await this.vault.sessionKey();
+    if (k) await saveSessionKey(userId, k);
+  }
+
   private async profile(userId: string): Promise<Profile> {
     const { data, error } = await supabase().from('profiles').select('*').eq('id', userId).single();
     if (error || !data) throw new AuthError('Profile not found.');
@@ -65,6 +72,8 @@ export class SupabaseAuth implements AuthApi {
     const { data } = await supabase().auth.getSession();
     const u = data.session?.user; if (!u) return null;
     const p = await this.profile(u.id);
+    const k = await loadSessionKey(u.id);
+    if (k) this.vault.unlockWithSessionKey(k); // stays unlocked on this device
     return { userId: u.id, email: u.email ?? '', name: p.name };
   }
 
@@ -74,6 +83,7 @@ export class SupabaseAuth implements AuthApi {
     if (error || !data.user) throw new AuthError(error?.message ?? 'Sign-up failed.');
     const { error: pErr } = await supabase().from('profiles').insert({ id: data.user.id, name, by_password: keys.byPassword, by_recovery: keys.byRecovery });
     if (pErr) throw new AuthError(pErr.message);
+    await this.persistKey(data.user.id);
     return { session: { userId: data.user.id, email, name }, recoveryCode: keys.recoveryCode };
   }
 
@@ -82,6 +92,7 @@ export class SupabaseAuth implements AuthApi {
     if (error || !data.user) throw new AuthError('Email or password is incorrect.');
     const p = await this.profile(data.user.id);
     if (!(await this.vault.unlock(p.byPassword, password))) throw new AuthError('Could not unlock your data with this password.');
+    await this.persistKey(data.user.id);
     return { userId: data.user.id, email, name: p.name };
   }
 
@@ -101,10 +112,11 @@ export class SupabaseAuth implements AuthApi {
     if (aErr) throw new AuthError(aErr.message);
     const { error } = await supabase().from('profiles').update({ by_password: byPassword }).eq('id', data.user.id);
     if (error) throw new AuthError(error.message);
+    await this.persistKey(data.user.id);
     return { userId: data.user.id, email: data.user.email ?? '', name: p.name };
   }
 
-  async signOut() { this.vault.lock(); await supabase().auth.signOut(); }
+  async signOut() { this.vault.lock(); await clearSessionKeys(); await supabase().auth.signOut(); }
 }
 
 export function supabaseRepos(vault: Vault, userId: string): Repos {

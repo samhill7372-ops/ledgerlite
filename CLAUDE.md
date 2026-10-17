@@ -16,8 +16,11 @@ into a maintainable structure; do not redesign the UI.
    OCR text) is AES-GCM encrypted on the device with a per-user data key (DEK)
    before it is stored anywhere. The server stores ciphertext only. The DEK is
    wrapped by a password-derived key (PBKDF2 210k, SHA-256) and separately by a
-   recovery-code-derived key. The DEK lives only in memory; never persist it.
-   The project owner must never be able to read user data. See `src/lib/crypto/`.
+   recovery-code-derived key. The raw DEK lives only in memory; the only thing
+   that may be persisted is a NON-EXTRACTABLE CryptoKey copy in IndexedDB
+   (`src/auth/keystore.ts`, owner-approved 2026-10-17) so the device stays
+   unlocked; its bytes are unreadable by any script and it never leaves the
+   device. The project owner must never be able to read user data. See `src/lib/crypto/`.
 2. **No backend server of our own.** The browser talks directly to Supabase
    under row-level security. Budget math, insights and OCR all run on the phone.
 3. **Zero cost.** Do not add paid services. OCR stays on-device (Tesseract.js).

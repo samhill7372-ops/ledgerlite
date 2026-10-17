@@ -56,7 +56,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       try {
         const a = await createAuth(); setAuth(a);
         const s = await a.restore();
-        if (s) { setSession(s); setNeedsUnlock(true); }
+        if (s && !vault.locked) await onSignedIn(s, false); // device key store unlocked us
+        else if (s) { setSession(s); setNeedsUnlock(true); }
       } catch { /* offline or restore failed: fall through to the auth screen */ }
       finally { setReady(true); }
     })();
