@@ -1,13 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useApp } from '@/store/useApp';
-import { allCategories } from '@/types';
+import { allCategories, type Expense } from '@/types';
 import { fmt } from '@/lib/money';
-import { inRange, monthLabel, type RangeKey } from '@/lib/dates';
+import { inRange, monthLabel, todayISO, type RangeKey } from '@/lib/dates';
 import { monthlyTotals } from '@/lib/budget';
+import { toCsv, importCsv, type ImportResult } from '@/lib/csv';
 import { ExpenseRow } from '@/components/ExpenseRow';
 
 export function ExpensesScreen({ initialRange }: { initialRange?: RangeKey }) {
-  const { expenses, budget, resetData, showToast } = useApp();
+  const { expenses, budget, importExpenses, resetData, showToast } = useApp();
   const [range, setRange] = useState<RangeKey>(initialRange ?? 'month');
   const [cat, setCat] = useState<string>('');
   const [q, setQ] = useState('');
@@ -18,10 +19,41 @@ export function ExpensesScreen({ initialRange }: { initialRange?: RangeKey }) {
     .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt)), [expenses, range, cat, q]);
   const total = list.reduce((a, e) => a + e.amount, 0);
 
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [preview, setPreview] = useState<ImportResult | null>(null);
+  const [importing, setImporting] = useState(false);
+
   function exportCsv() {
-    const rows = [['date', 'amount', 'currency', 'category', 'note', 'source'], ...expenses.map((e) => [e.date, e.amount, e.currency, e.category, '"' + (e.note || '').replace(/"/g, '""') + '"', e.source])];
-    const csv = rows.map((r) => r.join(',')).join('\n');
-    navigator.clipboard?.writeText(csv).then(() => showToast('CSV copied to clipboard')).catch(() => showToast('Copy failed'));
+    const blob = new Blob([toCsv(expenses)], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = `ledgerlite-${todayISO()}.csv`; a.click();
+    URL.revokeObjectURL(a.href);
+    showToast('CSV downloaded');
+  }
+
+  async function pickFile(f: File | undefined) {
+    if (!f) return;
+    const res = importCsv(await f.text(), allCategories(budget));
+    if (res.error) showToast(res.error);
+    else if (!res.rows.length) showToast('No usable rows found in that file');
+    else setPreview(res);
+    if (fileRef.current) fileRef.current.value = '';
+  }
+
+  async function confirmImport() {
+    if (!preview || importing) return;
+    setImporting(true);
+    try {
+      const seen = new Set(expenses.map((e) => `${e.date}|${e.amount}|${e.note}`));
+      const now = new Date().toISOString();
+      const fresh: Expense[] = preview.rows
+        .filter((r) => !seen.has(`${r.date}|${r.amount}|${r.note}`))
+        .map((r) => ({ id: crypto.randomUUID(), ...r, source: 'manual' as const, createdAt: now, updatedAt: now }));
+      await importExpenses(fresh);
+      const dup = preview.rows.length - fresh.length;
+      showToast(`Imported ${fresh.length} expense${fresh.length === 1 ? '' : 's'}${dup ? ` (${dup} duplicate${dup === 1 ? '' : 's'} skipped)` : ''}`);
+      setPreview(null);
+    } finally { setImporting(false); }
   }
   function reset() {
     if (armed) { resetData(); setArmed(false); showToast('Data reset'); }
@@ -33,10 +65,26 @@ export function ExpensesScreen({ initialRange }: { initialRange?: RangeKey }) {
       <header>
         <div><div className="eyebrow">Ledger</div><h1>Expenses</h1></div>
         <div className="actions" style={{ flex: '0 0 auto' }}>
-          <button className="btn sm" onClick={exportCsv}>Copy CSV</button>
+          <button className="btn sm" onClick={exportCsv}>Export CSV</button>
+          <button className="btn sm" onClick={() => fileRef.current?.click()}>Import</button>
           <button className="btn sm" onClick={reset}>{armed ? 'Tap again to confirm' : 'Reset'}</button>
+          <input ref={fileRef} type="file" accept=".csv,text/csv" style={{ display: 'none' }} onChange={(e) => pickFile(e.target.files?.[0])} />
         </div>
       </header>
+      {preview && (
+        <div className="panel" role="region" aria-label="Import preview">
+          <div className="panel-head"><h2>Import preview</h2></div>
+          <p className="note">
+            Found <b>{preview.rows.length}</b> expense{preview.rows.length === 1 ? '' : 's'} totalling <b className="num">{fmt(preview.rows.reduce((a, r) => a + r.amount, 0))}</b>
+            {' '}from {preview.rows.reduce((a, r) => (r.date < a ? r.date : a), preview.rows[0].date)} to {preview.rows.reduce((a, r) => (r.date > a ? r.date : a), preview.rows[0].date)}.
+            {preview.skipped ? ` ${preview.skipped} unreadable row${preview.skipped === 1 ? '' : 's'} skipped.` : ''} Duplicates of existing expenses will be skipped.
+          </p>
+          <div className="actions">
+            <button className="btn primary" disabled={importing} onClick={confirmImport}>{importing ? 'Importing…' : 'Import all'}</button>
+            <button className="btn" style={{ flex: '0 0 auto' }} onClick={() => setPreview(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
       <div className="panel">
         <input className="search" type="search" placeholder="Search vendor or note" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search expenses" />
         <div className="filters">

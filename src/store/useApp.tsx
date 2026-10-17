@@ -33,6 +33,7 @@ interface AppState {
   addExpense(e: Expense): Promise<void>;
   updateExpense(e: Expense): Promise<void>;
   deleteExpense(id: string): Promise<void>;
+  importExpenses(list: Expense[]): Promise<void>;
   resetData(): Promise<void>;
   setBudget(b: Budget): Promise<void>;
   addRecurring(rule: RecurringRule): Promise<void>;
@@ -109,6 +110,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await repos.expenses.remove(id); setExpenses((l) => l.filter((x) => x.id !== id));
     showToast('Deleted', async () => { await repos.expenses.upsert(victim); setExpenses((l) => [...l, victim]); setToast(null); });
   }, [repos, expenses, showToast]);
+  const importExpenses = useCallback(async (list: Expense[]) => {
+    if (!repos || !list.length) return;
+    const merged = [...expenses, ...list];
+    await repos.expenses.replaceAll(merged); setExpenses(merged);
+  }, [repos, expenses]);
   const resetData = useCallback(async () => {
     if (!repos || !session) return;
     const list = session.userId === 'demo' ? seedExpenses() : [];
@@ -120,8 +126,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AppState>(() => ({
     ready, auth, session, needsUnlock, expenses, budget, recurring, view, editing, toast,
-    setView, startEdit: setEditing, onSignedIn, signOut, addExpense, updateExpense, deleteExpense, resetData, setBudget, addRecurring, updateRecurring, showToast,
-  }), [ready, auth, session, needsUnlock, expenses, budget, recurring, view, editing, toast, onSignedIn, signOut, addExpense, updateExpense, deleteExpense, resetData, setBudget, addRecurring, updateRecurring, showToast]);
+    setView, startEdit: setEditing, onSignedIn, signOut, addExpense, updateExpense, deleteExpense, importExpenses, resetData, setBudget, addRecurring, updateRecurring, showToast,
+  }), [ready, auth, session, needsUnlock, expenses, budget, recurring, view, editing, toast, onSignedIn, signOut, addExpense, updateExpense, deleteExpense, importExpenses, resetData, setBudget, addRecurring, updateRecurring, showToast]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

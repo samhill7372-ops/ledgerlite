@@ -7,6 +7,7 @@ import { ExpensesScreen } from '@/features/expenses/ExpensesScreen';
 import { InsightsScreen } from '@/features/insights/InsightsScreen';
 import { BottomNav } from '@/components/BottomNav';
 import { InstallPrompt } from '@/components/InstallPrompt';
+import { UpdatePrompt } from '@/components/UpdatePrompt';
 import { Toast } from '@/components/Toast';
 import type { RangeKey } from '@/lib/dates';
 
@@ -30,4 +31,4 @@ function Shell() {
   );
 }
 
-export default function App() { return <AppProvider><Shell /></AppProvider>; }
+export default function App() { return <AppProvider><Shell /><UpdatePrompt /></AppProvider>; }
