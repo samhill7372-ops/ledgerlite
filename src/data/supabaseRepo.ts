@@ -83,8 +83,11 @@ class SbSpaceRepo implements SpaceRepo {
       wrapped_key: await this.vault.wrapSpaceKey(rawKey),
       profile: await this.vault.encryptJSONFor(spaceId, { name: myName }),
     };
-    const { error } = await supabase().from('space_members').upsert(row);
-    if (error) throw error;
+    // Plain insert (return=minimal): an upsert would read the row back, but the
+    // SELECT policy is is_space_member(), which this very row establishes. A
+    // duplicate (23505 = already a member) is fine — the key is registered above.
+    const { error } = await supabase().from('space_members').insert(row);
+    if (error && error.code !== '23505') throw error;
   }
   async mine(): Promise<Space[]> {
     const { data, error } = await supabase().from('space_members').select('space_id,wrapped_key').eq('user_id', this.userId);

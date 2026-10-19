@@ -30,6 +30,38 @@ const emailA = `iso.a.${run}@ledgerlite-test.dev`;
 const emailB = `iso.b.${run}@ledgerlite-test.dev`;
 const CANARY = 'PLAINTEXT-CANARY Meghana biryani';
 
+describe('supabase shared spaces (live)', () => {
+  it('creates a space, joins it, and round-trips a split expense', async () => {
+    const vc = new Vault(); const authC = new SupabaseAuth(vc);
+    const c = await authC.signUp('Iso C', `iso.c.${run}@ledgerlite-test.dev`, 'password-C-9');
+    const rc = supabaseRepos(vc, c.session.userId);
+    const raw = await Vault.generateSpaceKeyRaw();
+    const spaceId = webcrypto.randomUUID();
+    await vc.addSpaceKey(spaceId, raw);
+    await rc.spaces.create({ id: spaceId, name: 'Iso Space' }, raw, 'Iso C');
+    expect((await rc.spaces.mine()).map((s) => s.name)).toContain('Iso Space');
+
+    const vd = new Vault(); const authD = new SupabaseAuth(vd);
+    const d = await authD.signUp('Iso D', `iso.d.${run}@ledgerlite-test.dev`, 'password-D-9');
+    const rd = supabaseRepos(vd, d.session.userId);
+    await rd.spaces.join(spaceId, raw, 'Iso D');
+    await rd.spaces.upsertExpense({
+      id: webcrypto.randomUUID(), amount: 1000, currency: 'INR', category: 'Other', date: '2026-10-19',
+      note: 'shared', source: 'manual', spaceId,
+      split: { paidBy: d.session.userId, shares: { [c.session.userId]: 500, [d.session.userId]: 500 } },
+      createdAt: '', updatedAt: '',
+    });
+    expect((await rd.spaces.members(spaceId)).map((m) => m.name).sort()).toEqual(['Iso C', 'Iso D']);
+    await authD.signOut();
+
+    await authC.signIn(`iso.c.${run}@ledgerlite-test.dev`, 'password-C-9');
+    const seen = await supabaseRepos(vc, c.session.userId).spaces.listExpenses(spaceId);
+    expect(seen).toHaveLength(1);
+    expect(seen[0].split?.shares[c.session.userId]).toBe(500);
+    await authC.signOut();
+  }, 120_000);
+});
+
 describe('supabase backend (Zone 2 acceptance)', () => {
   it('isolates users and stores only ciphertext', async () => {
     // --- user A signs up and writes one expense -------------------------------
