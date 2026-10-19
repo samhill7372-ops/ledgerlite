@@ -78,15 +78,17 @@ describe('mock backend (Contract B)', () => {
     await ra.spaces.create({ id: spaceId, name: 'Goa Trip' }, raw, 'Alice');
     await authA.signOut();
 
-    // Bob signs up so he has a published contact key.
+    // Bob signs up so he has a published contact key, and opts in to be discoverable.
     const vb = new Vault(); const authB = new MockAuth(vb);
     const b = await authB.signUp('Bob', 'bob@x.com', 'pass-bob');
     const rb = mockRepos(vb, b.session.userId);
+    await rb.spaces.setDiscoverable(true);
     await authB.signOut();
 
-    // Alice signs back in, finds Bob by email, invites him.
+    // Alice signs back in: directory shows opted-in Bob (not herself, she's off), email search finds him.
     await authA.signIn('alice@x.com', 'pass-alice');
     await ra.spaces.mine(); // unwraps her space key into the vault (real path)
+    expect((await ra.spaces.directory()).map((c) => c.name)).toEqual(['Bob']);
     const found = await ra.spaces.findUser('BOB@x.com'); // case-insensitive
     expect(found?.userId).toBe(b.session.userId);
     expect(await ra.spaces.findUser('nobody@x.com')).toBeNull();

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '@/store/useApp';
 import { fmt } from '@/lib/money';
 import { monthExpenses } from '@/lib/budget';
@@ -88,11 +88,13 @@ function GroupList() {
 }
 
 function GroupDetail() {
-  const { currentSpace, spaceMembers, spaceExpenses, session, switchSpace, startAdd, settleUp, inviteLink, findUser, inviteUser, showToast } = useApp();
+  const { currentSpace, spaceMembers, spaceExpenses, session, switchSpace, startAdd, settleUp, inviteLink, findUser, inviteUser, directory, loadDirectory, discoverable, setDiscoverable, showToast } = useApp();
   const [showInvite, setShowInvite] = useState(false);
   const [email, setEmail] = useState('');
   const [found, setFound] = useState<Contact | 'none' | null>(null);
   const [busy, setBusy] = useState(false);
+  useEffect(() => { if (showInvite) void loadDirectory(); }, [showInvite, loadDirectory]);
+  const pickable = directory.filter((c) => !spaceMembers.some((m) => m.userId === c.userId));
   const now = new Date();
   const real = useMemo(() => spaceExpenses.filter((e) => !e.settlement), [spaceExpenses]);
   const month = useMemo(() => monthExpenses(real, now), [real]);
@@ -116,12 +118,10 @@ function GroupDetail() {
     setBusy(true);
     try { setFound((await findUser(e)) ?? 'none'); } catch { showToast('Search failed'); } finally { setBusy(false); }
   }
-  async function addFound() {
-    if (!found || found === 'none') return;
-    const already = spaceMembers.some((m) => m.userId === found.userId);
-    if (already) { showToast(`${found.name} is already in this group`); setFound(null); setEmail(''); return; }
+  async function doInvite(c: Contact) {
+    if (spaceMembers.some((m) => m.userId === c.userId)) { showToast(`${c.name} is already in this group`); return; }
     setBusy(true);
-    try { await inviteUser(found); showToast(`Invited ${found.name}`); setFound(null); setEmail(''); setShowInvite(false); }
+    try { await inviteUser(c); showToast(`Invited ${c.name}`); setFound(null); setEmail(''); }
     catch { showToast('Could not send the invite'); } finally { setBusy(false); }
   }
 
@@ -154,7 +154,17 @@ function GroupDetail() {
         <div className="panel" style={{ borderColor: 'var(--accent)' }}>
           <div className="panel-head"><h2>Add people</h2></div>
           <p className="note" style={{ marginBottom: 10 }}>In the group: {spaceMembers.map((m) => (m.userId === me ? 'You' : m.name)).join(', ')}.</p>
-          <label>Invite a LedgerLite user by email
+
+          {pickable.length > 0 && (
+            <label>Pick a LedgerLite user
+              <select value="" onChange={(e) => { const c = pickable.find((x) => x.userId === e.target.value); if (c) void doInvite(c); }}>
+                <option value="" disabled>Choose someone…</option>
+                {pickable.map((c) => <option key={c.userId} value={c.userId}>{c.name}</option>)}
+              </select>
+            </label>
+          )}
+
+          <label>…or invite by email
             <input type="email" inputMode="email" value={email} placeholder="friend@example.com"
               onChange={(e) => { setEmail(e.target.value); setFound(null); }}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); search(); } }} />
@@ -167,9 +177,14 @@ function GroupDetail() {
           {found && found !== 'none' && (
             <div className="panel" style={{ marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
               <div><b>{found.name}</b><div className="note">has a LedgerLite account</div></div>
-              <button className="btn sm primary" style={{ flex: '0 0 auto' }} disabled={busy} onClick={addFound}>Add to group</button>
+              <button className="btn sm primary" style={{ flex: '0 0 auto' }} disabled={busy} onClick={() => doInvite(found)}>Add to group</button>
             </div>
           )}
+
+          <label className="check" style={{ marginTop: 12 }}>
+            <input type="checkbox" checked={discoverable} onChange={(e) => setDiscoverable(e.target.checked)} />
+            <span>Let others find me by name in their dropdown (off = reachable by exact email only)</span>
+          </label>
         </div>
       )}
 

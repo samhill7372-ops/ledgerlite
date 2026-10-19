@@ -48,6 +48,11 @@ interface AppState {
   pendingInvites: PendingInvite[];
   acceptInvite(id: string): Promise<void>;
   declineInvite(id: string): Promise<void>;
+  /** Opt-in directory for the "pick a user" dropdown. */
+  directory: Contact[];
+  loadDirectory(): Promise<void>;
+  discoverable: boolean;
+  setDiscoverable(on: boolean): Promise<void>;
   settleUp(from: string, to: string, amount: number): Promise<void>;
   view: View;
   editing: Expense | null;
@@ -96,6 +101,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [spaceExpenses, setSpaceExpenses] = useState<Expense[]>([]);
   const [addTarget, setAddTarget] = useState<Space | null>(null);
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
+  const [directory, setDirectory] = useState<Contact[]>([]);
+  const [discoverable, setDiscoverableState] = useState(false);
   // Invite link (#join=<spaceId>.<key>): the fragment never reaches any server.
   const pendingJoin = useRef<{ id: string; raw: string } | null>(null);
   if (pendingJoin.current === null) {
@@ -158,6 +165,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const sp = await r.spaces.mine();
       setSpaces(sp);
       try { setPendingInvites(await r.spaces.pendingInvites()); } catch { /* best-effort */ }
+      try { setDiscoverableState(await r.spaces.isDiscoverable()); } catch { /* best-effort */ }
       const joined = pj ? sp.find((x) => x.id === pj.id) : undefined;
       if (joined) {
         setCurrentSpace(joined);
@@ -172,7 +180,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(async () => {
     await auth?.signOut(); vault.lock();
     setSession(null); setRepos(null); setExpenses([]); setBudgetState(EMPTY_BUDGET); setRecurring([]); setNeedsCurrency(false); setNeedsUnlock(false); setEditing(null);
-    setSpaces([]); setCurrentSpace(null); setSpaceMembers([]); setSpaceExpenses([]); setAddTarget(null); setPendingInvites([]);
+    setSpaces([]); setCurrentSpace(null); setSpaceMembers([]); setSpaceExpenses([]); setAddTarget(null); setPendingInvites([]); setDirectory([]); setDiscoverableState(false);
   }, [auth]);
 
   const addExpense = useCallback(async (e: Expense) => {
@@ -253,6 +261,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await repos.spaces.declineInvite(id);
     setPendingInvites((l) => l.filter((x) => x.id !== id));
   }, [repos]);
+  const loadDirectory = useCallback(async () => {
+    if (!repos) return;
+    try { setDirectory(await repos.spaces.directory()); } catch { /* directory unavailable until migration */ }
+  }, [repos]);
+  const setDiscoverable = useCallback(async (on: boolean) => {
+    if (!repos) return;
+    await repos.spaces.setDiscoverable(on); setDiscoverableState(on);
+  }, [repos]);
   const settleUp = useCallback(async (from: string, to: string, amount: number) => {
     if (!repos || !currentSpace) return;
     const now = new Date().toISOString();
@@ -284,9 +300,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AppState>(() => ({
     ready, auth, session, needsUnlock, expenses, budget, recurring, needsCurrency, sharedText, clearShared, view, editing, toast,
     spaces, currentSpace, spaceMembers, spaceExpenses, addTarget, startAdd, createSpace, switchSpace, reloadSpace, inviteLink, settleUp,
-    findUser, inviteUser, pendingInvites, acceptInvite, declineInvite,
+    findUser, inviteUser, pendingInvites, acceptInvite, declineInvite, directory, loadDirectory, discoverable, setDiscoverable,
     setView, startEdit: setEditing, onSignedIn, signOut, addExpense, updateExpense, deleteExpense, importExpenses, resetData, setBudget, addRecurring, updateRecurring, showToast,
-  }), [ready, auth, session, needsUnlock, expenses, budget, recurring, needsCurrency, sharedText, clearShared, view, editing, toast, spaces, currentSpace, spaceMembers, spaceExpenses, addTarget, startAdd, createSpace, switchSpace, reloadSpace, inviteLink, settleUp, findUser, inviteUser, pendingInvites, acceptInvite, declineInvite, onSignedIn, signOut, addExpense, updateExpense, deleteExpense, importExpenses, resetData, setBudget, addRecurring, updateRecurring, showToast]);
+  }), [ready, auth, session, needsUnlock, expenses, budget, recurring, needsCurrency, sharedText, clearShared, view, editing, toast, spaces, currentSpace, spaceMembers, spaceExpenses, addTarget, startAdd, createSpace, switchSpace, reloadSpace, inviteLink, settleUp, findUser, inviteUser, pendingInvites, acceptInvite, declineInvite, directory, loadDirectory, discoverable, setDiscoverable, onSignedIn, signOut, addExpense, updateExpense, deleteExpense, importExpenses, resetData, setBudget, addRecurring, updateRecurring, showToast]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

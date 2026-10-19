@@ -115,11 +115,24 @@ class MockSpaceRepo implements SpaceRepo {
     safe.set(this.expKey(spaceId), JSON.stringify(all));
   }
   private invites(): InviteRow[] { try { return JSON.parse(safe.get(INVITES) || '[]'); } catch { return []; } }
+  private allProfiles(): Profile[] { try { return JSON.parse(safe.get(USERS) || '[]'); } catch { return []; } }
   async findUser(email: string): Promise<Contact | null> {
-    let list: Profile[] = []; try { list = JSON.parse(safe.get(USERS) || '[]'); } catch { /* none */ }
-    const u = list.find((x) => x.email === email.trim().toLowerCase());
+    const u = this.allProfiles().find((x) => x.email === email.trim().toLowerCase());
     if (!u || !u.publicKey || u.id === this.userId) return null;
     return { userId: u.id, name: u.name, publicKey: u.publicKey };
+  }
+  async directory(): Promise<Contact[]> {
+    return this.allProfiles()
+      .filter((u) => u.discoverable && u.publicKey && u.id !== this.userId)
+      .map((u) => ({ userId: u.id, name: u.name, publicKey: u.publicKey! }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+  async isDiscoverable(): Promise<boolean> {
+    return !!this.allProfiles().find((u) => u.id === this.userId)?.discoverable;
+  }
+  async setDiscoverable(on: boolean) {
+    const list = this.allProfiles(); const u = list.find((x) => x.id === this.userId);
+    if (u) { u.discoverable = on; safe.set(USERS, JSON.stringify(list)); }
   }
   async invite(spaceId: string, spaceName: string, contact: Contact, fromName: string) {
     const raw = this.vault.rawSpaceKey(spaceId);

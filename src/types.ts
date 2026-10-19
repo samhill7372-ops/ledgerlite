@@ -61,6 +61,8 @@ export interface Profile {
   /** ECDH contact keypair for direct invites (added lazily for older accounts). */
   publicKey?: string;
   wrappedPrivateKey?: string;
+  /** Opt-in: appear in other users' "pick a user" dropdown. */
+  discoverable?: boolean;
   createdAt: string;
 }
 

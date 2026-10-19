@@ -142,6 +142,20 @@ class SbSpaceRepo implements SpaceRepo {
     if (!row || !row.public_key || row.id === this.userId) return null;
     return { userId: row.id, name: row.name, publicKey: row.public_key };
   }
+  async directory(): Promise<Contact[]> {
+    const { data, error } = await supabase().rpc('list_discoverable_users');
+    if (error) throw error;
+    return (data ?? []).filter((r: { public_key?: string }) => r.public_key)
+      .map((r: { id: string; name: string; public_key: string }) => ({ userId: r.id, name: r.name, publicKey: r.public_key }));
+  }
+  async isDiscoverable(): Promise<boolean> {
+    const { data } = await supabase().from('profiles').select('discoverable').eq('id', this.userId).maybeSingle();
+    return !!data?.discoverable;
+  }
+  async setDiscoverable(on: boolean) {
+    const { error } = await supabase().from('profiles').update({ discoverable: on }).eq('id', this.userId);
+    if (error) throw error;
+  }
   async invite(spaceId: string, spaceName: string, contact: Contact, fromName: string) {
     const raw = this.vault.rawSpaceKey(spaceId);
     if (!raw) throw new Error('Open the group first so its key is available');

@@ -43,6 +43,11 @@ export interface SpaceRepo {
   removeExpense(spaceId: string, id: string): Promise<void>;
   /** Find an existing user by exact email (null if none or they have no contact key). */
   findUser(email: string): Promise<Contact | null>;
+  /** Users who opted in to be discoverable (for the "pick a user" dropdown). */
+  directory(): Promise<Contact[]>;
+  /** Whether this account is discoverable, and a setter. */
+  isDiscoverable(): Promise<boolean>;
+  setDiscoverable(on: boolean): Promise<void>;
   /** Seal the space key to `contact` and store a pending invite. `fromName` is shown to them. */
   invite(spaceId: string, spaceName: string, contact: Contact, fromName: string): Promise<void>;
   /** Invites waiting for me to accept. */
