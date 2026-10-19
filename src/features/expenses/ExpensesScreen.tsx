@@ -8,8 +8,8 @@ import { toCsv, importCsv, type ImportResult } from '@/lib/csv';
 import { ExpenseRow } from '@/components/ExpenseRow';
 
 export function ExpensesScreen({ initialRange }: { initialRange?: RangeKey }) {
-  const { expenses, budget, importExpenses, resetData, showToast, currentSpace, spaceExpenses } = useApp();
-  const source = currentSpace ? spaceExpenses : expenses;
+  const { expenses, budget, importExpenses, resetData, showToast } = useApp();
+  const source = expenses;
   const [range, setRange] = useState<RangeKey>(initialRange ?? 'month');
   const [cat, setCat] = useState<string>('');
   const [q, setQ] = useState('');
@@ -64,11 +64,11 @@ export function ExpensesScreen({ initialRange }: { initialRange?: RangeKey }) {
   return (
     <section className="view">
       <header>
-        <div><div className="eyebrow">{currentSpace ? currentSpace.name : 'Ledger'}</div><h1>Expenses</h1></div>
+        <div><div className="eyebrow">Ledger</div><h1>Expenses</h1></div>
         <div className="actions" style={{ flex: '0 0 auto' }}>
           <button className="btn sm" onClick={exportCsv}>Export CSV</button>
-          {!currentSpace && <><button className="btn sm" onClick={() => fileRef.current?.click()}>Import</button>
-          <button className="btn sm" onClick={reset}>{armed ? 'Tap again to confirm' : 'Reset'}</button></>}
+          <button className="btn sm" onClick={() => fileRef.current?.click()}>Import</button>
+          <button className="btn sm" onClick={reset}>{armed ? 'Tap again to confirm' : 'Reset'}</button>
           <input ref={fileRef} type="file" accept=".csv,text/csv" style={{ display: 'none' }} onChange={(e) => pickFile(e.target.files?.[0])} />
         </div>
       </header>

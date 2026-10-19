@@ -5,13 +5,11 @@ import { todayISO } from '@/lib/dates';
 import { computePace, monthExpenses, byCategory, buildAlerts } from '@/lib/budget';
 import { ExpenseRow } from '@/components/ExpenseRow';
 import { CurrencyPicker } from '@/components/CurrencyPicker';
-import { SpaceBar } from '@/components/SpaceBar';
-import { SpaceHome } from './SpaceHome';
 
 const PILL: Record<string, [string, string]> = { none: ['No budget set', ''], 'on-track': ['On track', 'good'], 'over-pace': ['Over pace', 'warn'], 'over-budget': ['Over budget', 'bad'] };
 
 export function HomeScreen() {
-  const { session, expenses, budget, signOut, setView, currentSpace } = useApp();
+  const { session, expenses, budget, signOut, setView } = useApp();
   const now = new Date();
   const pace = useMemo(() => computePace(expenses, budget, now), [expenses, budget]);
   const month = useMemo(() => monthExpenses(expenses, now), [expenses]);
@@ -43,8 +41,7 @@ export function HomeScreen() {
         </div>
       </header>
 
-      <SpaceBar />
-      {currentSpace ? <SpaceHome /> : <><CurrencyPicker />
+      <CurrencyPicker />
 
       <div className="hero-wrap">
         <div className="stat hero">
@@ -83,8 +80,6 @@ export function HomeScreen() {
           {recent.length ? recent.map((e) => <ExpenseRow key={e.id} e={e} />) : <li className="empty" style={{ display: 'block' }}>No expenses yet. Tap Add to log your first one, or scan a bill.</li>}
         </ul>
       </div>
-
-      </>}
     </section>
   );
 }

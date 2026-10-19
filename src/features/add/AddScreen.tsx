@@ -11,13 +11,13 @@ import { guessCategory } from '@/lib/ocr';
 import { BillScanner, type ScanResult } from './BillScanner';
 
 export function AddScreen() {
-  const { editing, startEdit, addExpense, updateExpense, expenses, budget, setBudget, addRecurring, sharedText, clearShared, showToast, setView, session, currentSpace, spaceMembers } = useApp();
+  const { editing, startEdit, addExpense, updateExpense, expenses, budget, setBudget, addRecurring, sharedText, clearShared, showToast, setView, session, currentSpace, addTarget, reloadSpace, spaceMembers } = useApp();
   const [amount, setAmount] = useState(''); const [date, setDate] = useState(todayISO()); const [category, setCategory] = useState<Category>('Food');
   const [currency, setCurrency] = useState<Currency>(homeCurrency()); const [note, setNote] = useState(''); const [scan, setScan] = useState<ScanResult | null>(null);
   const [newCat, setNewCat] = useState<string | null>(null); // non-null = the "new category" input is open
   const [repeat, setRepeat] = useState(false);
   const [sms, setSms] = useState<string | null>(null); // non-null = the paste-SMS box is open
-  const inSpace = !editing ? currentSpace : editing.spaceId ? currentSpace : null; // split UI applies in a space
+  const inSpace = editing ? (editing.spaceId ? currentSpace : null) : addTarget; // split UI applies in a space
   const [paidBy, setPaidBy] = useState('');
   const [splitIds, setSplitIds] = useState<string[]>([]);
   useEffect(() => { // (re)default the split whenever the space/members/editing change
@@ -78,7 +78,8 @@ export function AddScreen() {
     if (editing) {
       const split = editing.split ? { paidBy, shares: equalShares(round2(amt), Object.keys(editing.split.shares)) } : undefined;
       await updateExpense({ ...editing, amount: round2(amt), currency, category, date, note: note.trim(), ...(split ? { split } : {}), updatedAt: now });
-      showToast('Updated'); startEdit(null); setView('expenses');
+      showToast('Updated'); startEdit(null);
+      if (editing.spaceId) { await reloadSpace(editing.spaceId); setView('split'); } else setView('expenses');
     } else if (inSpace) {
       const e: Expense = {
         id: crypto.randomUUID(), amount: round2(amt), currency, category, date, note: note.trim(),
@@ -87,8 +88,9 @@ export function AddScreen() {
         createdAt: now, updatedAt: now,
       };
       await addExpense(e);
+      await reloadSpace(inSpace.id);
       showToast(`Added to ${inSpace.name} — split ${splitIds.length} way${splitIds.length === 1 ? '' : 's'}`);
-      setView('home');
+      setView('split'); // back to the group so the balance updates in view
     } else {
       const e: Expense = { id: crypto.randomUUID(), amount: round2(amt), currency, category, date, note: note.trim(), source: scan ? 'receipt' : 'manual', ocrRawText: scan?.rawText, createdAt: now, updatedAt: now };
       await addExpense(e);
@@ -100,7 +102,9 @@ export function AddScreen() {
         await addRecurring(rule);
         showToast(`Added. Will repeat monthly on day ${rule.dayOfMonth}`);
       } else showToast(afterAddMessage([...expenses, e], budget, e));
-      setView('home');
+      // Stay on the Add screen for quick back-to-back entry; just clear the form.
+      setAmount(''); setNote(''); setDate(todayISO()); setCategory('Food'); setScan(null); setRepeat(false);
+      (document.getElementById('amount') as HTMLInputElement | null)?.focus();
     }
   }
 

@@ -13,7 +13,7 @@ import { materialize } from '@/lib/recurring';
 import { todayISO } from '@/lib/dates';
 import { guessCurrency, homeCurrency, setHomeCurrency } from '@/lib/money';
 
-export type View = 'home' | 'expenses' | 'add' | 'insights';
+export type View = 'home' | 'expenses' | 'add' | 'insights' | 'split';
 export interface Toast { id: number; text: string; undo?: () => void }
 
 interface AppState {
@@ -30,13 +30,17 @@ interface AppState {
   /** Text shared into the app via the Android share sheet (consumed by Add, never stored). */
   sharedText: string | null;
   clearShared(): void;
-  /** Shared spaces (v2): null currentSpace = personal ledger. */
+  /** Shared spaces (v2). currentSpace = the group open in the Split tab (null = its group list). */
   spaces: Space[];
   currentSpace: Space | null;
   spaceMembers: SpaceMember[];
   spaceExpenses: Expense[];
-  createSpace(name: string): Promise<string>;   // resolves to the invite link
-  switchSpace(id: string | null): Promise<void>;
+  /** The space a new expense is being added to (null = personal). Separate from currentSpace. */
+  addTarget: Space | null;
+  startAdd(target: Space | null): void;          // open the Add screen in personal or space mode
+  createSpace(name: string): Promise<string>;    // resolves to the invite link
+  switchSpace(id: string | null): Promise<void>; // open a group in the Split tab (null = group list)
+  reloadSpace(id: string): Promise<void>;        // refresh members + expenses of the open group
   inviteLink(spaceId: string): string | null;
   settleUp(from: string, to: string, amount: number): Promise<void>;
   view: View;
@@ -84,6 +88,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [currentSpace, setCurrentSpace] = useState<Space | null>(null);
   const [spaceMembers, setSpaceMembers] = useState<SpaceMember[]>([]);
   const [spaceExpenses, setSpaceExpenses] = useState<Expense[]>([]);
+  const [addTarget, setAddTarget] = useState<Space | null>(null);
   // Invite link (#join=<spaceId>.<key>): the fragment never reaches any server.
   const pendingJoin = useRef<{ id: string; raw: string } | null>(null);
   if (pendingJoin.current === null) {
@@ -150,6 +155,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setCurrentSpace(joined);
         setSpaceMembers(await r.spaces.members(joined.id));
         setSpaceExpenses(await r.spaces.listExpenses(joined.id));
+        setView('split'); return; // a link-join lands straight in the group
       }
     } catch { /* spaces are best-effort; the personal ledger still loads */ }
     setView('home');
@@ -158,7 +164,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(async () => {
     await auth?.signOut(); vault.lock();
     setSession(null); setRepos(null); setExpenses([]); setBudgetState(EMPTY_BUDGET); setRecurring([]); setNeedsCurrency(false); setNeedsUnlock(false); setEditing(null);
-    setSpaces([]); setCurrentSpace(null); setSpaceMembers([]); setSpaceExpenses([]);
+    setSpaces([]); setCurrentSpace(null); setSpaceMembers([]); setSpaceExpenses([]); setAddTarget(null);
   }, [auth]);
 
   const addExpense = useCallback(async (e: Expense) => {
@@ -202,6 +208,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSpaceMembers(await repos.spaces.members(id));
     setSpaceExpenses(await repos.spaces.listExpenses(id));
   }, [repos, spaces]);
+  const reloadSpace = useCallback(async (id: string) => {
+    if (!repos) return;
+    setSpaceMembers(await repos.spaces.members(id));
+    setSpaceExpenses(await repos.spaces.listExpenses(id));
+  }, [repos]);
+  const startAdd = useCallback((target: Space | null) => {
+    setEditing(null); setAddTarget(target); setView('add'); window.scrollTo({ top: 0 });
+  }, []);
   const inviteLink = useCallback((spaceId: string) => {
     const raw = vault.rawSpaceKey(spaceId);
     return raw ? `${window.location.origin}/#join=${spaceId}.${encodeURIComponent(raw)}` : null;
@@ -236,9 +250,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AppState>(() => ({
     ready, auth, session, needsUnlock, expenses, budget, recurring, needsCurrency, sharedText, clearShared, view, editing, toast,
-    spaces, currentSpace, spaceMembers, spaceExpenses, createSpace, switchSpace, inviteLink, settleUp,
+    spaces, currentSpace, spaceMembers, spaceExpenses, addTarget, startAdd, createSpace, switchSpace, reloadSpace, inviteLink, settleUp,
     setView, startEdit: setEditing, onSignedIn, signOut, addExpense, updateExpense, deleteExpense, importExpenses, resetData, setBudget, addRecurring, updateRecurring, showToast,
-  }), [ready, auth, session, needsUnlock, expenses, budget, recurring, needsCurrency, sharedText, clearShared, view, editing, toast, spaces, currentSpace, spaceMembers, spaceExpenses, createSpace, switchSpace, inviteLink, settleUp, onSignedIn, signOut, addExpense, updateExpense, deleteExpense, importExpenses, resetData, setBudget, addRecurring, updateRecurring, showToast]);
+  }), [ready, auth, session, needsUnlock, expenses, budget, recurring, needsCurrency, sharedText, clearShared, view, editing, toast, spaces, currentSpace, spaceMembers, spaceExpenses, addTarget, startAdd, createSpace, switchSpace, reloadSpace, inviteLink, settleUp, onSignedIn, signOut, addExpense, updateExpense, deleteExpense, importExpenses, resetData, setBudget, addRecurring, updateRecurring, showToast]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

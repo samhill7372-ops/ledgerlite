@@ -5,6 +5,7 @@ import { HomeScreen } from '@/features/home/HomeScreen';
 import { AddScreen } from '@/features/add/AddScreen';
 import { ExpensesScreen } from '@/features/expenses/ExpensesScreen';
 import { InsightsScreen } from '@/features/insights/InsightsScreen';
+import { SplitScreen } from '@/features/split/SplitScreen';
 import { BottomNav } from '@/components/BottomNav';
 import { InstallPrompt } from '@/components/InstallPrompt';
 import { UpdatePrompt } from '@/components/UpdatePrompt';
@@ -23,6 +24,7 @@ function Shell() {
       <div className="wrap">
         {view === 'home' && <HomeScreen />}
         {view === 'add' && <AddScreen />}
+        {view === 'split' && <SplitScreen />}
         {view === 'expenses' && <ExpensesScreen key={listRange ?? 'default'} initialRange={listRange} />}
         {view === 'insights' && <InsightsScreen onPickMonth={(k) => { setListRange(`m:${k}`); setView('expenses'); }} />}
       </div>
