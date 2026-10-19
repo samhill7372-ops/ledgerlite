@@ -15,8 +15,11 @@ body{margin:0;background:var(--bg) radial-gradient(900px 400px at 50% -120px,#1a
 .install .t b{font:700 14px var(--display)}
 .install .t small{color:var(--muted);font-size:12px}
 .install .acts{display:flex;gap:6px;flex:0 0 auto}
-.panel.locked{border-style:dashed;opacity:.75}
-.panel.locked .note{margin-bottom:0}
+.spacebar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px}
+.spacebar select{width:auto;flex:1 1 auto;min-width:0;padding:8px 10px;font-size:14px;border-radius:10px;min-height:40px}
+.spacebar .btn{flex:0 0 auto}
+.spacebar-new{display:flex;gap:6px;width:100%;align-items:center}
+.spacebar-new input{flex:1 1 auto;min-width:0}
 .check{display:flex;gap:10px;align-items:center;font-size:13px;color:var(--muted);cursor:pointer}
 .check input{width:18px;height:18px;min-height:0;flex:0 0 auto;accent-color:var(--accent);margin:0}
 .bigbtns{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}

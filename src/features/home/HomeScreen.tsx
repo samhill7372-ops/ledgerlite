@@ -5,11 +5,13 @@ import { todayISO } from '@/lib/dates';
 import { computePace, monthExpenses, byCategory, buildAlerts } from '@/lib/budget';
 import { ExpenseRow } from '@/components/ExpenseRow';
 import { CurrencyPicker } from '@/components/CurrencyPicker';
+import { SpaceBar } from '@/components/SpaceBar';
+import { SpaceHome } from './SpaceHome';
 
 const PILL: Record<string, [string, string]> = { none: ['No budget set', ''], 'on-track': ['On track', 'good'], 'over-pace': ['Over pace', 'warn'], 'over-budget': ['Over budget', 'bad'] };
 
 export function HomeScreen() {
-  const { session, expenses, budget, signOut, setView } = useApp();
+  const { session, expenses, budget, signOut, setView, currentSpace } = useApp();
   const now = new Date();
   const pace = useMemo(() => computePace(expenses, budget, now), [expenses, budget]);
   const month = useMemo(() => monthExpenses(expenses, now), [expenses]);
@@ -41,7 +43,8 @@ export function HomeScreen() {
         </div>
       </header>
 
-      <CurrencyPicker />
+      <SpaceBar />
+      {currentSpace ? <SpaceHome /> : <><CurrencyPicker />
 
       <div className="hero-wrap">
         <div className="stat hero">
@@ -81,10 +84,7 @@ export function HomeScreen() {
         </ul>
       </div>
 
-      <div className="panel locked" aria-label="Coming soon">
-        <div className="panel-head"><h2>Shared spaces</h2><span className="pill">🔒 coming in v2</span></div>
-        <p className="note">A family ledger with one common budget, and trip expenses split with friends — who paid, who owes whom. Encrypted like everything else.</p>
-      </div>
+      </>}
     </section>
   );
 }

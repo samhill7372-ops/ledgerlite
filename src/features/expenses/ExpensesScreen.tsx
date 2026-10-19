@@ -8,15 +8,16 @@ import { toCsv, importCsv, type ImportResult } from '@/lib/csv';
 import { ExpenseRow } from '@/components/ExpenseRow';
 
 export function ExpensesScreen({ initialRange }: { initialRange?: RangeKey }) {
-  const { expenses, budget, importExpenses, resetData, showToast } = useApp();
+  const { expenses, budget, importExpenses, resetData, showToast, currentSpace, spaceExpenses } = useApp();
+  const source = currentSpace ? spaceExpenses : expenses;
   const [range, setRange] = useState<RangeKey>(initialRange ?? 'month');
   const [cat, setCat] = useState<string>('');
   const [q, setQ] = useState('');
   const [armed, setArmed] = useState(false);
-  const months = useMemo(() => Object.keys(monthlyTotals(expenses)).sort().reverse(), [expenses]);
-  const list = useMemo(() => expenses
+  const months = useMemo(() => Object.keys(monthlyTotals(source)).sort().reverse(), [source]);
+  const list = useMemo(() => source
     .filter((e) => inRange(e.date, range) && (!cat || e.category === cat) && (!q || (e.note || '').toLowerCase().includes(q.toLowerCase())))
-    .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt)), [expenses, range, cat, q]);
+    .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt)), [source, range, cat, q]);
   const total = list.reduce((a, e) => a + e.amount, 0);
 
   const fileRef = useRef<HTMLInputElement>(null);
@@ -24,7 +25,7 @@ export function ExpensesScreen({ initialRange }: { initialRange?: RangeKey }) {
   const [importing, setImporting] = useState(false);
 
   function exportCsv() {
-    const blob = new Blob([toCsv(expenses)], { type: 'text/csv;charset=utf-8' });
+    const blob = new Blob([toCsv(source)], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob); a.download = `ledgerlite-${todayISO()}.csv`; a.click();
     URL.revokeObjectURL(a.href);
@@ -63,11 +64,11 @@ export function ExpensesScreen({ initialRange }: { initialRange?: RangeKey }) {
   return (
     <section className="view">
       <header>
-        <div><div className="eyebrow">Ledger</div><h1>Expenses</h1></div>
+        <div><div className="eyebrow">{currentSpace ? currentSpace.name : 'Ledger'}</div><h1>Expenses</h1></div>
         <div className="actions" style={{ flex: '0 0 auto' }}>
           <button className="btn sm" onClick={exportCsv}>Export CSV</button>
-          <button className="btn sm" onClick={() => fileRef.current?.click()}>Import</button>
-          <button className="btn sm" onClick={reset}>{armed ? 'Tap again to confirm' : 'Reset'}</button>
+          {!currentSpace && <><button className="btn sm" onClick={() => fileRef.current?.click()}>Import</button>
+          <button className="btn sm" onClick={reset}>{armed ? 'Tap again to confirm' : 'Reset'}</button></>}
           <input ref={fileRef} type="file" accept=".csv,text/csv" style={{ display: 'none' }} onChange={(e) => pickFile(e.target.files?.[0])} />
         </div>
       </header>

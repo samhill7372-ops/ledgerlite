@@ -6,13 +6,15 @@ import { useApp } from '@/store/useApp';
 const dfmt = new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short' });
 
 export function ExpenseRow({ e }: { e: Expense }) {
-  const { startEdit, setView, deleteExpense } = useApp();
+  const { startEdit, setView, deleteExpense, session, spaceMembers } = useApp();
+  const who = (id: string) => (id === session?.userId ? 'you' : spaceMembers.find((m) => m.userId === id)?.name ?? 'member');
+  const extra = e.settlement ? ` · ${who(e.settlement.from)} paid ${who(e.settlement.to)}` : e.split ? ` · ${who(e.split.paidBy)} paid` : '';
   return (
     <li>
-      <div className="cat" data-c={e.category}>{e.category}</div>
+      <div className="cat" data-c={e.settlement ? undefined : e.category}>{e.settlement ? '⇄' : e.category}</div>
       <div className="t">
         <b>{e.note || e.category}</b>
-        <small>{dfmt.format(new Date(e.date))}{e.date === todayISO() ? ' · today' : ''}
+        <small>{dfmt.format(new Date(e.date))}{e.date === todayISO() ? ' · today' : ''}{extra}
           <span className={'src ' + (e.source !== 'manual' ? 'receipt' : '')}>{e.source === 'receipt' ? 'scanned' : e.source === 'recurring' ? 'auto' : 'manual'}</span></small>
       </div>
       <div className="a">

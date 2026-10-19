@@ -40,8 +40,8 @@ export interface NewUserKeys { byPassword: WrappedKey; byRecovery: WrappedKey; r
  */
 export class Vault {
   private dek: CryptoKey | null = null;
-  /** Shared-space keys (spaceId → AES key), delivered via invite link or unwrapped from storage. */
-  private spaces = new Map<string, CryptoKey>();
+  /** Shared-space keys (spaceId → AES key + its raw b64 for building invite links), in memory only. */
+  private spaces = new Map<string, { key: CryptoKey; raw: string }>();
 
   static get supported(): boolean {
     return typeof crypto !== 'undefined' && !!crypto.subtle;
@@ -92,11 +92,13 @@ export class Vault {
   /** Register a space key (from an invite link or an unwrap) for this session. */
   async addSpaceKey(spaceId: string, rawB64: string): Promise<void> {
     const key = await crypto.subtle.importKey('raw', unb64(rawB64), 'AES-GCM', false, ['encrypt', 'decrypt']);
-    this.spaces.set(spaceId, key);
+    this.spaces.set(spaceId, { key, raw: rawB64 });
   }
 
   hasSpaceKey(spaceId: string): boolean { return this.spaces.has(spaceId); }
   dropSpaceKey(spaceId: string): void { this.spaces.delete(spaceId); }
+  /** Raw b64 of a registered space key — used to build invite links. */
+  rawSpaceKey(spaceId: string): string | null { return this.spaces.get(spaceId)?.raw ?? null; }
 
   /** Wrap a raw space key under the personal DEK (stored in the member row). */
   async wrapSpaceKey(rawB64: string): Promise<string> { return this.encrypt(rawB64); }
@@ -109,7 +111,7 @@ export class Vault {
   private spaceKey(spaceId: string): CryptoKey {
     const k = this.spaces.get(spaceId);
     if (!k) throw new Error('No key for this space');
-    return k;
+    return k.key;
   }
 
   async encryptJSONFor(spaceId: string, value: unknown): Promise<string> {
