@@ -13,6 +13,12 @@ export function allCategories(budget?: { customCats?: string[] }): Category[] {
 /** ISO 4217 code. The supported list (symbols, labels, regions) lives in src/lib/money.ts (CURRENCIES). */
 export type Currency = string;
 
+/** Who paid and what each member owes for a shared-space expense. */
+export interface SplitInfo {
+  paidBy: string;                   // userId of the payer
+  shares: Record<string, number>;   // userId → owed amount (sums to the expense amount)
+}
+
 export interface Expense {
   id: string;
   amount: number;          // major units, 2dp
@@ -22,9 +28,18 @@ export interface Expense {
   note: string;            // vendor / note
   source: 'manual' | 'receipt' | 'recurring';
   ocrRawText?: string;
+  /** Set when the expense lives in a shared space (payload encrypted with the space key). */
+  spaceId?: string;
+  split?: SplitInfo;
+  /** A settle-up payment: `from` paid `to` this amount in real life. */
+  settlement?: { from: string; to: string };
   createdAt: string;       // ISO timestamp
   updatedAt: string;
 }
+
+/** A shared ledger (family or trip). Name lives encrypted in the space meta. */
+export interface Space { id: string; name: string }
+export interface SpaceMember { userId: string; name: string }
 
 export interface Budget {
   total: number;                              // 0 = not set

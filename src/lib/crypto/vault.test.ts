@@ -60,6 +60,32 @@ describe('Vault', () => {
   it('sessionKey is null while locked', async () => {
     expect(await new Vault().sessionKey()).toBeNull();
   });
+
+  it('space keys: invite-link delivery, DEK wrapping, and member isolation', async () => {
+    const alice = new Vault(); await alice.createUserKeys('alice-pass');
+    const raw = await Vault.generateSpaceKeyRaw();           // created with the space
+    await alice.addSpaceKey('trip', raw);
+    const ct = await alice.encryptJSONFor('trip', { note: 'Hotel', amount: 6000 });
+    expect(ct).not.toContain('Hotel');
+
+    // Bob joins via the link fragment: same raw key, can read the space…
+    const bob = new Vault(); await bob.createUserKeys('bob-pass');
+    await bob.addSpaceKey('trip', raw);
+    expect(await bob.decryptJSONFor('trip', ct)).toEqual({ note: 'Hotel', amount: 6000 });
+    // …then wraps it under his own DEK for other devices, and can unwrap it back.
+    const wrapped = await bob.wrapSpaceKey(raw);
+    bob.dropSpaceKey('trip');
+    expect(bob.hasSpaceKey('trip')).toBe(false);
+    await bob.unwrapSpaceKey('trip', wrapped);
+    expect(await bob.decryptJSONFor('trip', ct)).toEqual({ note: 'Hotel', amount: 6000 });
+
+    // An outsider without the space key cannot read it, DEK or not.
+    const eve = new Vault(); await eve.createUserKeys('eve-pass');
+    await expect(eve.decryptJSONFor('trip', ct)).rejects.toThrow(/No key/);
+    // And locking clears space keys too.
+    alice.lock();
+    await expect(alice.encryptJSONFor('trip', {})).rejects.toThrow(/No key/);
+  });
 });
 
 describe('recovery code', () => {

@@ -40,6 +40,8 @@ export interface NewUserKeys { byPassword: WrappedKey; byRecovery: WrappedKey; r
  */
 export class Vault {
   private dek: CryptoKey | null = null;
+  /** Shared-space keys (spaceId → AES key), delivered via invite link or unwrapped from storage. */
+  private spaces = new Map<string, CryptoKey>();
 
   static get supported(): boolean {
     return typeof crypto !== 'undefined' && !!crypto.subtle;
@@ -74,7 +76,53 @@ export class Vault {
     return wrapDek(this.dek, newPassword);
   }
 
-  lock(): void { this.dek = null; }
+  lock(): void { this.dek = null; this.spaces.clear(); }
+
+  // ---- Shared spaces -------------------------------------------------------
+  // Each space has one AES-GCM key. It travels person-to-person inside the
+  // invite link's #fragment (never sent to a server) and is stored per member
+  // wrapped by their personal DEK, so any of their devices can recover it.
+
+  /** Fresh space key as base64 (goes into the invite link + gets wrapped per member). */
+  static async generateSpaceKeyRaw(): Promise<string> {
+    const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
+    return b64(new Uint8Array(await crypto.subtle.exportKey('raw', key)));
+  }
+
+  /** Register a space key (from an invite link or an unwrap) for this session. */
+  async addSpaceKey(spaceId: string, rawB64: string): Promise<void> {
+    const key = await crypto.subtle.importKey('raw', unb64(rawB64), 'AES-GCM', false, ['encrypt', 'decrypt']);
+    this.spaces.set(spaceId, key);
+  }
+
+  hasSpaceKey(spaceId: string): boolean { return this.spaces.has(spaceId); }
+  dropSpaceKey(spaceId: string): void { this.spaces.delete(spaceId); }
+
+  /** Wrap a raw space key under the personal DEK (stored in the member row). */
+  async wrapSpaceKey(rawB64: string): Promise<string> { return this.encrypt(rawB64); }
+
+  /** Unwrap a stored space key with the personal DEK and register it. */
+  async unwrapSpaceKey(spaceId: string, wrapped: string): Promise<void> {
+    await this.addSpaceKey(spaceId, await this.decrypt(wrapped));
+  }
+
+  private spaceKey(spaceId: string): CryptoKey {
+    const k = this.spaces.get(spaceId);
+    if (!k) throw new Error('No key for this space');
+    return k;
+  }
+
+  async encryptJSONFor(spaceId: string, value: unknown): Promise<string> {
+    const iv = rand(12);
+    const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, this.spaceKey(spaceId), enc.encode(JSON.stringify(value))));
+    return `${b64(iv)}.${b64(ct)}`;
+  }
+
+  async decryptJSONFor<T>(spaceId: string, cipher: string): Promise<T> {
+    const [iv, ct] = cipher.split('.');
+    const plain = dec.decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(iv) }, this.spaceKey(spaceId), unb64(ct)));
+    return JSON.parse(plain) as T;
+  }
 
   /**
    * A NON-EXTRACTABLE copy of the DEK for the browser's key store (IndexedDB),
