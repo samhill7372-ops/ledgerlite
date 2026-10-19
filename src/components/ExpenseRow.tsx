@@ -2,6 +2,7 @@ import type { Expense } from '@/types';
 import { fmt } from '@/lib/money';
 import { todayISO } from '@/lib/dates';
 import { useApp } from '@/store/useApp';
+import { CategoryIcon } from '@/components/CategoryIcon';
 
 const dfmt = new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short' });
 
@@ -11,7 +12,7 @@ export function ExpenseRow({ e }: { e: Expense }) {
   const extra = e.settlement ? ` · ${who(e.settlement.from)} paid ${who(e.settlement.to)}` : e.split ? ` · ${who(e.split.paidBy)} paid` : '';
   return (
     <li>
-      <div className="cat" data-c={e.settlement ? undefined : e.category}>{e.settlement ? '⇄' : e.category}</div>
+      <div className="cat" data-c={e.settlement ? undefined : e.category} title={e.settlement ? 'Settlement' : e.category}><CategoryIcon cat={e.category} settlement={!!e.settlement} /></div>
       <div className="t">
         <b>{e.note || e.category}</b>
         <small>{dfmt.format(new Date(e.date))}{e.date === todayISO() ? ' · today' : ''}{extra}

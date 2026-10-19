@@ -6,6 +6,7 @@ import { inRange, monthLabel, todayISO, type RangeKey } from '@/lib/dates';
 import { monthlyTotals } from '@/lib/budget';
 import { toCsv, importCsv, readSpreadsheet, type ImportResult } from '@/lib/csv';
 import { ExpenseRow } from '@/components/ExpenseRow';
+import { EmptyState } from '@/components/EmptyState';
 
 export function ExpensesScreen({ initialRange }: { initialRange?: RangeKey }) {
   const { expenses, budget, importExpenses, resetData, showToast } = useApp();
@@ -101,9 +102,9 @@ export function ExpensesScreen({ initialRange }: { initialRange?: RangeKey }) {
           {allCategories(budget).map((c) => <button key={c} className="chip" aria-pressed={cat === c} onClick={() => setCat(c)}>{c}</button>)}
         </div>
         <p className="note" style={{ marginBottom: 10 }}>{list.length ? `${list.length} expense${list.length === 1 ? '' : 's'} · ${fmt(total)} total` : ''}</p>
-        <ul className="ledger">
-          {list.length ? list.map((e) => <ExpenseRow key={e.id} e={e} />) : <li className="empty" style={{ display: 'block' }}>No expenses in this view. Add one with the + button.</li>}
-        </ul>
+        {list.length
+          ? <ul className="ledger">{list.map((e) => <ExpenseRow key={e.id} e={e} />)}</ul>
+          : <EmptyState icon="search" title="Nothing here" hint={q || cat ? 'No expenses match this filter. Try a wider range or clear the filter.' : 'No expenses in this period yet — tap + to add one.'} />}
       </div>
       <footer>Your data is encrypted on this device before it is stored anywhere.</footer>
     </section>

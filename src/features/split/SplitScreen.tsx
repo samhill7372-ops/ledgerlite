@@ -4,6 +4,7 @@ import { fmt } from '@/lib/money';
 import { monthExpenses } from '@/lib/budget';
 import { computeNet, simplifyDebts } from '@/lib/split';
 import { ExpenseRow } from '@/components/ExpenseRow';
+import { EmptyState } from '@/components/EmptyState';
 import type { Contact } from '@/types';
 
 /** The Split tab: a list of shared groups, or one open group with balances. */
@@ -210,10 +211,9 @@ function GroupDetail() {
 
       <div className="panel recent">
         <div className="panel-head"><h2>Recent</h2></div>
-        <ul className="ledger">
-          {recent.length ? recent.map((e) => <ExpenseRow key={e.id} e={e} />)
-            : <li className="empty" style={{ display: 'block' }}>No shared expenses yet. Tap “Add shared expense”.</li>}
-        </ul>
+        {recent.length
+          ? <ul className="ledger">{recent.map((e) => <ExpenseRow key={e.id} e={e} />)}</ul>
+          : <EmptyState title="No shared expenses yet" hint="Add one above and it’ll be split between members." />}
       </div>
     </>
   );

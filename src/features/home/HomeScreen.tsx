@@ -5,11 +5,14 @@ import { todayISO } from '@/lib/dates';
 import { computePace, monthExpenses, byCategory, buildAlerts } from '@/lib/budget';
 import { ExpenseRow } from '@/components/ExpenseRow';
 import { CurrencyPicker } from '@/components/CurrencyPicker';
+import { HeaderMenu } from '@/components/HeaderMenu';
+import { Sparkbars } from '@/components/Sparkbars';
+import { EmptyState } from '@/components/EmptyState';
 
 const PILL: Record<string, [string, string]> = { none: ['No budget set', ''], 'on-track': ['On track', 'good'], 'over-pace': ['Over pace', 'warn'], 'over-budget': ['Over budget', 'bad'] };
 
 export function HomeScreen() {
-  const { session, expenses, budget, signOut, setView } = useApp();
+  const { session, expenses, budget, setView } = useApp();
   const now = new Date();
   const pace = useMemo(() => computePace(expenses, budget, now), [expenses, budget]);
   const month = useMemo(() => monthExpenses(expenses, now), [expenses]);
@@ -22,6 +25,11 @@ export function HomeScreen() {
   const daysWith = new Set(month.map((e) => e.date)).size;
   const top = Object.entries(cats).sort((a, b) => b[1] - a[1])[0];
   const recent = [...expenses].sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt)).slice(0, 3);
+  const last7 = useMemo(() => {
+    const out: number[] = [];
+    for (let i = 6; i >= 0; i--) { const d = new Date(now); d.setDate(d.getDate() - i); const k = todayISO(d); out.push(expenses.filter((e) => e.date === k).reduce((a, e) => a + e.amount, 0)); }
+    return out;
+  }, [expenses]);
   const [pillText, pillCls] = PILL[pace.status];
   const fillCls = pace.ratio >= 1 ? 'over' : pace.ratio >= 0.8 ? 'warn' : '';
 
@@ -35,10 +43,7 @@ export function HomeScreen() {
             <h1>Hi, {(session?.name || '').split(' ')[0]}</h1>
           </div>
         </div>
-        <div className="actions" style={{ flex: '0 0 auto', alignItems: 'center' }}>
-          <span className="badge">Encrypted on device</span>
-          <button className="signout" onClick={signOut}>Sign out</button>
-        </div>
+        <HeaderMenu />
       </header>
 
       <CurrencyPicker />
@@ -47,7 +52,8 @@ export function HomeScreen() {
         <div className="stat hero">
           <div className="budget-head"><div className="eyebrow">Spent this month</div><span className={'pill ' + pillCls}>{pillText}</span></div>
           <div className="v num">{fmt(pace.spent)}</div>
-          <div className="s">{month.length} expense{month.length === 1 ? '' : 's'}</div>
+          <div className="s">{month.length} expense{month.length === 1 ? '' : 's'} · last 7 days</div>
+          <Sparkbars values={last7} label="Spending over the last 7 days" />
           {pace.total > 0 && (<>
             <div className="budget-bar"><i className={fillCls} style={{ width: Math.min(100, pace.ratio * 100) + '%' }} /></div>
             <div className="budget-meta">
@@ -79,9 +85,9 @@ export function HomeScreen() {
 
       <div className="panel recent">
         <div className="panel-head"><h2>Recent</h2><button className="seeall" onClick={() => setView('expenses')}>See all</button></div>
-        <ul className="ledger">
-          {recent.length ? recent.map((e) => <ExpenseRow key={e.id} e={e} />) : <li className="empty" style={{ display: 'block' }}>No expenses yet. Tap Add to log your first one, or scan a bill.</li>}
-        </ul>
+        {recent.length
+          ? <ul className="ledger">{recent.map((e) => <ExpenseRow key={e.id} e={e} />)}</ul>
+          : <EmptyState title="No expenses yet" hint="Tap + to log your first one, or scan a bill." action={<button className="btn primary" style={{ maxWidth: 220 }} onClick={() => setView('add')}>Add expense</button>} />}
       </div>
     </section>
   );
