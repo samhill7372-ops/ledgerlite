@@ -4,7 +4,7 @@ import { allCategories, type Expense } from '@/types';
 import { fmt, homeCurrency } from '@/lib/money';
 import { inRange, monthLabel, todayISO, type RangeKey } from '@/lib/dates';
 import { monthlyTotals } from '@/lib/budget';
-import { toCsv, importCsv, type ImportResult } from '@/lib/csv';
+import { toCsv, importCsv, readSpreadsheet, type ImportResult } from '@/lib/csv';
 import { ExpenseRow } from '@/components/ExpenseRow';
 
 export function ExpensesScreen({ initialRange }: { initialRange?: RangeKey }) {
@@ -34,7 +34,11 @@ export function ExpensesScreen({ initialRange }: { initialRange?: RangeKey }) {
 
   async function pickFile(f: File | undefined) {
     if (!f) return;
-    const res = importCsv(await f.text(), allCategories(budget), homeCurrency());
+    const isExcel = /\.(xlsx?|xlsm)$/i.test(f.name) || /sheet|excel|ms-excel/i.test(f.type);
+    if (isExcel) showToast('Reading spreadsheet…');
+    const res = isExcel
+      ? await readSpreadsheet(f, allCategories(budget), homeCurrency())
+      : importCsv(await f.text(), allCategories(budget), homeCurrency());
     if (res.error) showToast(res.error);
     else if (!res.rows.length) showToast('No usable rows found in that file');
     else setPreview(res);
@@ -69,7 +73,7 @@ export function ExpensesScreen({ initialRange }: { initialRange?: RangeKey }) {
           <button className="btn sm" onClick={exportCsv}>Export CSV</button>
           <button className="btn sm" onClick={() => fileRef.current?.click()}>Import</button>
           <button className="btn sm" onClick={reset}>{armed ? 'Tap again to confirm' : 'Reset'}</button>
-          <input ref={fileRef} type="file" accept=".csv,text/csv" style={{ display: 'none' }} onChange={(e) => pickFile(e.target.files?.[0])} />
+          <input ref={fileRef} type="file" accept=".csv,text/csv,.xls,.xlsx,.xlsm,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style={{ display: 'none' }} onChange={(e) => pickFile(e.target.files?.[0])} />
         </div>
       </header>
       {preview && (

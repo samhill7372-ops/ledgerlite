@@ -61,46 +61,66 @@ function parseAmount(s: string): number | null {
   return Number.isFinite(v) && v > 0 ? round2(v) : null;
 }
 
+// Candidate header names in PRIORITY order; matched as substrings so
+// "Withdrawal Amt." or "Transaction Date" still resolve. Debit/withdrawal win
+// over a generic "amount" so bank statements import money spent, not received.
 const HEADERS = {
-  date: ['date', 'txn date', 'transaction date', 'posted date', 'value date'],
-  amount: ['amount', 'amt', 'debit', 'value', 'price', 'amount (inr)', 'withdrawal'],
-  note: ['note', 'notes', 'description', 'desc', 'vendor', 'narration', 'details', 'payee', 'merchant', 'remarks', 'particulars'],
-  category: ['category', 'cat', 'type', 'tag'],
-  currency: ['currency', 'cur', 'ccy'],
+  date: ['date'],
+  amount: ['withdrawal', 'debit', 'amount', 'amt', 'value', 'price'],
+  note: ['narration', 'description', 'particulars', 'remarks', 'details', 'desc', 'vendor', 'payee', 'merchant', 'note'],
+  category: ['category', 'tag'],
+  currency: ['currency', 'ccy', 'cur'],
 };
 
-function findCol(header: string[], names: string[]): number {
-  const h = header.map((x) => x.trim().toLowerCase());
-  for (const n of names) { const i = h.indexOf(n); if (i >= 0) return i; }
+const S = (v: unknown) => (v == null ? '' : String(v));
+
+/** First column whose header contains one of `names` (priority order). */
+function findCol(header: unknown[], names: string[]): number {
+  const h = header.map((x) => S(x).trim().toLowerCase());
+  for (const n of names) { const i = h.findIndex((c) => c.includes(n)); if (i >= 0) return i; }
+  return -1;
+}
+
+/** Bank statements have preamble rows; find the first row that is a real header (date + amount). */
+function findHeaderRow(grid: unknown[][]): number {
+  const limit = Math.min(grid.length, 25);
+  for (let i = 0; i < limit; i++) {
+    if (findCol(grid[i], HEADERS.date) >= 0 && findCol(grid[i], HEADERS.amount) >= 0) return i;
+  }
   return -1;
 }
 
 export interface ImportedRow { date: string; amount: number; note: string; category: Category; currency: Currency }
 export interface ImportResult { rows: ImportedRow[]; skipped: number; error?: string }
 
-/** Map arbitrary CSV text to expense rows. `categories` = the user's full category list. */
-export function importCsv(text: string, categories: string[], defaultCurrency: Currency = 'INR'): ImportResult {
-  const grid = parseCsv(text);
+/** Map a 2D grid (from CSV or a spreadsheet) to expense rows. */
+export function importGrid(grid: unknown[][], categories: string[], defaultCurrency: Currency = 'INR'): ImportResult {
   if (grid.length < 2) return { rows: [], skipped: 0, error: 'The file has no data rows.' };
-  const header = grid[0];
+  const hi = findHeaderRow(grid);
+  if (hi < 0) return { rows: [], skipped: 0, error: 'Could not find "date" and "amount" columns. Check the file has a header row with those.' };
+  const header = grid[hi];
   const ci = {
     date: findCol(header, HEADERS.date), amount: findCol(header, HEADERS.amount),
     note: findCol(header, HEADERS.note), category: findCol(header, HEADERS.category), currency: findCol(header, HEADERS.currency),
   };
-  if (ci.date < 0 || ci.amount < 0) return { rows: [], skipped: 0, error: 'Could not find "date" and "amount" columns in the header row.' };
   const catByLower = new Map(categories.map((c) => [c.toLowerCase(), c]));
   const rows: ImportedRow[] = []; let skipped = 0;
-  for (const r of grid.slice(1)) {
-    const date = parseDate(r[ci.date] ?? ''); const amount = parseAmount(r[ci.amount] ?? '');
+  for (const r of grid.slice(hi + 1)) {
+    const date = parseDate(S(r[ci.date])); const amount = parseAmount(S(r[ci.amount]));
     if (!date || amount == null) { skipped++; continue; }
-    const rawCat = ci.category >= 0 ? (r[ci.category] ?? '').trim().toLowerCase() : '';
-    const rawCur = ci.currency >= 0 ? (r[ci.currency] ?? '').trim().toUpperCase() : '';
+    const rawCat = ci.category >= 0 ? S(r[ci.category]).trim().toLowerCase() : '';
+    const rawCur = ci.currency >= 0 ? S(r[ci.currency]).trim().toUpperCase() : '';
     rows.push({
       date, amount,
-      note: ci.note >= 0 ? (r[ci.note] ?? '').trim().slice(0, 80) : '',
+      note: ci.note >= 0 ? S(r[ci.note]).trim().replace(/\s+/g, ' ').slice(0, 80) : '',
       category: catByLower.get(rawCat) ?? 'Other',
       currency: (CODES.has(rawCur) ? rawCur : defaultCurrency) as Currency,
     });
   }
   return { rows, skipped };
+}
+
+/** Map CSV text to expense rows. `categories` = the user's full category list. */
+export function importCsv(text: string, categories: string[], defaultCurrency: Currency = 'INR'): ImportResult {
+  return importGrid(parseCsv(text), categories, defaultCurrency);
 }

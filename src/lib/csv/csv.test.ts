@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Expense } from '@/types';
 import { CATEGORIES } from '@/types';
-import { toCsv, parseCsv, importCsv } from './csv';
+import { toCsv, parseCsv, importCsv, importGrid } from './csv';
 
 const CATS = [...CATEGORIES];
 
@@ -43,5 +43,34 @@ describe('importCsv', () => {
   it('errors clearly without date/amount headers or data', () => {
     expect(importCsv('foo,bar\n1,2', CATS).error).toMatch(/date.*amount/i);
     expect(importCsv('date,amount', CATS).error).toMatch(/no data/i);
+  });
+});
+
+describe('importGrid (bank statements)', () => {
+  it('skips preamble rows and finds the real header', () => {
+    const grid = [
+      ['HDFC Bank — Account Statement'],
+      ['Account No: XX8019', '', ''],
+      [''],
+      ['Date', 'Narration', 'Withdrawal Amt.', 'Deposit Amt.', 'Closing Balance'],
+      ['10/10/26', 'UPI-OXYGEN FUELS', '2,500.00', '', '12,345.00'],
+      ['12/10/26', 'SALARY CREDIT', '', '50,000.00', '62,345.00'],
+      ['13/10/26', 'SWIGGY', '540.00', '', '61,805.00'],
+    ];
+    const r = importGrid(grid, CATS, 'INR');
+    // Only debits (withdrawals) become expenses; the salary credit is skipped.
+    expect(r.rows).toEqual([
+      { date: '2026-10-10', amount: 2500, note: 'UPI-OXYGEN FUELS', category: 'Other', currency: 'INR' },
+      { date: '2026-10-13', amount: 540, note: 'SWIGGY', category: 'Other', currency: 'INR' },
+    ]);
+    expect(r.skipped).toBe(1);
+  });
+  it('matches amount headers by substring and prefers debit over a generic column', () => {
+    const grid = [['Txn Date', 'Description', 'Debit', 'Credit'], ['01-10-2026', 'ATM', '1000', '']];
+    expect(importGrid(grid, CATS, 'INR').rows[0]).toEqual({ date: '2026-10-01', amount: 1000, note: 'ATM', category: 'Other', currency: 'INR' });
+  });
+  it('tolerates numeric cells from a spreadsheet', () => {
+    const grid = [['Date', 'Amount', 'Note'], ['2026-10-01', 250.5, 'Lunch']];
+    expect(importGrid(grid, CATS, 'INR').rows[0].amount).toBe(250.5);
   });
 });
