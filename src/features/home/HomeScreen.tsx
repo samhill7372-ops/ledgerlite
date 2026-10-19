@@ -55,6 +55,9 @@ export function HomeScreen() {
               <span>On pace for {fmt(pace.projected)}</span>
             </div>
           </>)}
+          <button className="hero-link" onClick={() => setView('insights')}>
+            {pace.total > 0 ? 'Budget & trends' : 'Set a budget & see trends'} ›
+          </button>
         </div>
       </div>
 

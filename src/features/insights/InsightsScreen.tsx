@@ -8,7 +8,7 @@ import { daysInMonth, lastNMonthKeys, monthLabel } from '@/lib/dates';
 import { computePace, monthExpenses, byCategory, monthlyTotals, buildAlerts } from '@/lib/budget';
 
 export function InsightsScreen({ onPickMonth }: { onPickMonth: (key: string) => void }) {
-  const { expenses, budget, setBudget, showToast } = useApp();
+  const { expenses, budget, setBudget, showToast, setView } = useApp();
   const now = new Date();
   const pace = useMemo(() => computePace(expenses, budget, now), [expenses, budget]);
   const month = useMemo(() => monthExpenses(expenses, now), [expenses]);
@@ -23,7 +23,12 @@ export function InsightsScreen({ onPickMonth }: { onPickMonth: (key: string) => 
 
   return (
     <section className="view">
-      <header><div><div className="eyebrow">Insights</div><h1>Budget & trends</h1></div></header>
+      <header>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+          <button className="backbtn" aria-label="Back to home" onClick={() => { setView('home'); window.scrollTo({ top: 0 }); }}>‹</button>
+          <div><div className="eyebrow">Insights</div><h1>Budget & trends</h1></div>
+        </div>
+      </header>
 
       <BudgetPanel budget={budget} pace={pace} alerts={alerts} onSave={async (b) => { await setBudget(b); showToast('Budget saved'); }} />
 
