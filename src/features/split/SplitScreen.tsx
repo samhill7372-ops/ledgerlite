@@ -155,14 +155,13 @@ function GroupDetail() {
           <div className="panel-head"><h2>Add people</h2></div>
           <p className="note" style={{ marginBottom: 10 }}>In the group: {spaceMembers.map((m) => (m.userId === me ? 'You' : m.name)).join(', ')}.</p>
 
-          {pickable.length > 0 && (
-            <label>Pick a LedgerLite user
-              <select value="" onChange={(e) => { const c = pickable.find((x) => x.userId === e.target.value); if (c) void doInvite(c); }}>
-                <option value="" disabled>Choose someone…</option>
-                {pickable.map((c) => <option key={c.userId} value={c.userId}>{c.name}</option>)}
-              </select>
-            </label>
-          )}
+          <label>Pick a LedgerLite user
+            <select value="" disabled={pickable.length === 0}
+              onChange={(e) => { const c = pickable.find((x) => x.userId === e.target.value); if (c) void doInvite(c); }}>
+              <option value="" disabled>{pickable.length ? 'Choose someone…' : 'No other users to pick yet'}</option>
+              {pickable.map((c) => <option key={c.userId} value={c.userId}>{c.name}</option>)}
+            </select>
+          </label>
 
           <label>…or invite by email
             <input type="email" inputMode="email" value={email} placeholder="friend@example.com"
@@ -183,7 +182,7 @@ function GroupDetail() {
 
           <label className="check" style={{ marginTop: 12 }}>
             <input type="checkbox" checked={discoverable} onChange={(e) => setDiscoverable(e.target.checked)} />
-            <span>Let others find me by name in their dropdown (off = reachable by exact email only)</span>
+            <span>Show me in others' “pick a user” dropdown (uncheck to be reachable by exact email only)</span>
           </label>
         </div>
       )}

@@ -1,6 +1,7 @@
--- Opt-in discoverability: users who turn this on appear in the "pick a user"
--- dropdown. Off by default, so no name is exposed unless the person chooses it.
-alter table public.profiles add column discoverable boolean not null default false;
+-- Discoverability: users appear in the "pick a user" dropdown. Default ON
+-- (opt-out): everyone with a contact key is listed unless they switch it off.
+-- (Existing rows get true automatically from the column default.)
+alter table public.profiles add column discoverable boolean not null default true;
 
 -- Directory for the dropdown: returns ONLY id, name and public key (never the
 -- wrapped key columns) for opted-in users, excluding the caller. Login required.

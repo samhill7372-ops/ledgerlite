@@ -190,7 +190,7 @@ export class MockAuth implements AuthApi {
     if (list.some((u) => u.email === email)) throw new AuthError('An account with this email already exists. Sign in instead.');
     const keys = await this.vault.createUserKeys(password);
     const ck = await this.vault.createContactKeys();
-    const p: Profile = { id: crypto.randomUUID(), name: name.trim(), email, byPassword: keys.byPassword, byRecovery: keys.byRecovery, publicKey: ck.publicKey, wrappedPrivateKey: ck.wrappedPrivateKey, createdAt: new Date().toISOString() };
+    const p: Profile = { id: crypto.randomUUID(), name: name.trim(), email, byPassword: keys.byPassword, byRecovery: keys.byRecovery, publicKey: ck.publicKey, wrappedPrivateKey: ck.wrappedPrivateKey, discoverable: true, createdAt: new Date().toISOString() };
     list.push(p); this.save(list); safe.set(SESSION, p.id); await this.persistKey(p.id);
     return { session: toSession(p), recoveryCode: keys.recoveryCode };
   }
