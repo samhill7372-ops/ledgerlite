@@ -58,8 +58,17 @@ export interface Profile {
   name: string;
   byPassword: WrappedKey;
   byRecovery: WrappedKey;
+  /** ECDH contact keypair for direct invites (added lazily for older accounts). */
+  publicKey?: string;
+  wrappedPrivateKey?: string;
   createdAt: string;
 }
+
+/** A user found by email search, ready to be invited directly. */
+export interface Contact { userId: string; name: string; publicKey: string }
+
+/** An invite waiting for this user to accept. */
+export interface PendingInvite { id: string; spaceId: string; spaceName: string; fromName: string }
 
 /** A monthly repeating expense (rent, EMI, subscription). Stored encrypted. */
 export interface RecurringRule {

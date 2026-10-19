@@ -3,7 +3,7 @@
  * Screens read from here and call the actions; they never touch repos directly.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { Budget, Expense, RecurringRule, Space, SpaceMember } from '@/types';
+import type { Budget, Contact, Expense, PendingInvite, RecurringRule, Space, SpaceMember } from '@/types';
 import { Vault } from '@/lib/crypto';
 import type { Repos } from '@/data/repo';
 import type { AuthApi, Session } from '@/auth/api';
@@ -42,6 +42,12 @@ interface AppState {
   switchSpace(id: string | null): Promise<void>; // open a group in the Split tab (null = group list)
   reloadSpace(id: string): Promise<void>;        // refresh members + expenses of the open group
   inviteLink(spaceId: string): string | null;
+  /** Direct invites: find a user by email, invite them, accept/decline incoming invites. */
+  findUser(email: string): Promise<Contact | null>;
+  inviteUser(contact: Contact): Promise<void>;   // invite into the currently open group
+  pendingInvites: PendingInvite[];
+  acceptInvite(id: string): Promise<void>;
+  declineInvite(id: string): Promise<void>;
   settleUp(from: string, to: string, amount: number): Promise<void>;
   view: View;
   editing: Expense | null;
@@ -89,6 +95,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [spaceMembers, setSpaceMembers] = useState<SpaceMember[]>([]);
   const [spaceExpenses, setSpaceExpenses] = useState<Expense[]>([]);
   const [addTarget, setAddTarget] = useState<Space | null>(null);
+  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
   // Invite link (#join=<spaceId>.<key>): the fragment never reaches any server.
   const pendingJoin = useRef<{ id: string; raw: string } | null>(null);
   if (pendingJoin.current === null) {
@@ -150,6 +157,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       const sp = await r.spaces.mine();
       setSpaces(sp);
+      try { setPendingInvites(await r.spaces.pendingInvites()); } catch { /* best-effort */ }
       const joined = pj ? sp.find((x) => x.id === pj.id) : undefined;
       if (joined) {
         setCurrentSpace(joined);
@@ -164,7 +172,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(async () => {
     await auth?.signOut(); vault.lock();
     setSession(null); setRepos(null); setExpenses([]); setBudgetState(EMPTY_BUDGET); setRecurring([]); setNeedsCurrency(false); setNeedsUnlock(false); setEditing(null);
-    setSpaces([]); setCurrentSpace(null); setSpaceMembers([]); setSpaceExpenses([]); setAddTarget(null);
+    setSpaces([]); setCurrentSpace(null); setSpaceMembers([]); setSpaceExpenses([]); setAddTarget(null); setPendingInvites([]);
   }, [auth]);
 
   const addExpense = useCallback(async (e: Expense) => {
@@ -220,6 +228,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const raw = vault.rawSpaceKey(spaceId);
     return raw ? `${window.location.origin}/#join=${spaceId}.${encodeURIComponent(raw)}` : null;
   }, []);
+  const findUser = useCallback(async (email: string) => {
+    if (!repos) return null;
+    return repos.spaces.findUser(email);
+  }, [repos]);
+  const inviteUser = useCallback(async (contact: Contact) => {
+    if (!repos || !currentSpace || !session) throw new Error('Open a group first');
+    await repos.spaces.invite(currentSpace.id, currentSpace.name, contact, session.name);
+  }, [repos, currentSpace, session]);
+  const acceptInvite = useCallback(async (id: string) => {
+    if (!repos || !session) return;
+    const sp = await repos.spaces.acceptInvite(id, session.name);
+    setPendingInvites((l) => l.filter((x) => x.id !== id));
+    if (sp) {
+      setSpaces((l) => (l.some((x) => x.id === sp.id) ? l : [...l, sp]));
+      setCurrentSpace(sp);
+      setSpaceMembers(await repos.spaces.members(sp.id));
+      setSpaceExpenses(await repos.spaces.listExpenses(sp.id));
+      setView('split');
+    }
+  }, [repos, session]);
+  const declineInvite = useCallback(async (id: string) => {
+    if (!repos) return;
+    await repos.spaces.declineInvite(id);
+    setPendingInvites((l) => l.filter((x) => x.id !== id));
+  }, [repos]);
   const settleUp = useCallback(async (from: string, to: string, amount: number) => {
     if (!repos || !currentSpace) return;
     const now = new Date().toISOString();
@@ -251,8 +284,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AppState>(() => ({
     ready, auth, session, needsUnlock, expenses, budget, recurring, needsCurrency, sharedText, clearShared, view, editing, toast,
     spaces, currentSpace, spaceMembers, spaceExpenses, addTarget, startAdd, createSpace, switchSpace, reloadSpace, inviteLink, settleUp,
+    findUser, inviteUser, pendingInvites, acceptInvite, declineInvite,
     setView, startEdit: setEditing, onSignedIn, signOut, addExpense, updateExpense, deleteExpense, importExpenses, resetData, setBudget, addRecurring, updateRecurring, showToast,
-  }), [ready, auth, session, needsUnlock, expenses, budget, recurring, needsCurrency, sharedText, clearShared, view, editing, toast, spaces, currentSpace, spaceMembers, spaceExpenses, addTarget, startAdd, createSpace, switchSpace, reloadSpace, inviteLink, settleUp, onSignedIn, signOut, addExpense, updateExpense, deleteExpense, importExpenses, resetData, setBudget, addRecurring, updateRecurring, showToast]);
+  }), [ready, auth, session, needsUnlock, expenses, budget, recurring, needsCurrency, sharedText, clearShared, view, editing, toast, spaces, currentSpace, spaceMembers, spaceExpenses, addTarget, startAdd, createSpace, switchSpace, reloadSpace, inviteLink, settleUp, findUser, inviteUser, pendingInvites, acceptInvite, declineInvite, onSignedIn, signOut, addExpense, updateExpense, deleteExpense, importExpenses, resetData, setBudget, addRecurring, updateRecurring, showToast]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

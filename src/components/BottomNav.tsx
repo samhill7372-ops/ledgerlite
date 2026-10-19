@@ -6,13 +6,14 @@ const ITEMS: { v: View; label: string; icon: JSX.Element }[] = [
   { v: 'split', label: 'Split', icon: <svg viewBox="0 0 24 24"><circle cx="8" cy="9" r="3" /><circle cx="17" cy="9" r="2.4" /><path d="M2.5 19c0-2.8 2.5-4.5 5.5-4.5s5.5 1.7 5.5 4.5M15 15c2.6.2 4.5 1.8 4.5 4" /></svg> },
 ];
 export function BottomNav() {
-  const { view, setView, startAdd } = useApp();
+  const { view, setView, startAdd, pendingInvites } = useApp();
   return (
     <div className="bottombar"><nav aria-label="Main">
       {ITEMS.map((it) => (
         <button key={it.v} className={it.v === 'add' ? 'add' : ''} aria-current={view === it.v ? 'page' : undefined}
           onClick={() => { if (it.v === 'add') startAdd(null); else setView(it.v); window.scrollTo({ top: 0 }); }}>
-          {it.icon}{it.label}
+          <span className="navicon">{it.icon}{it.v === 'split' && pendingInvites.length > 0 && <i className="dot" aria-label="pending invitations" />}</span>
+          {it.label}
         </button>
       ))}
     </nav></div>

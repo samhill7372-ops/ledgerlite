@@ -4,6 +4,7 @@ import { fmt } from '@/lib/money';
 import { monthExpenses } from '@/lib/budget';
 import { computeNet, simplifyDebts } from '@/lib/split';
 import { ExpenseRow } from '@/components/ExpenseRow';
+import type { Contact } from '@/types';
 
 /** The Split tab: a list of shared groups, or one open group with balances. */
 export function SplitScreen() {
@@ -12,7 +13,7 @@ export function SplitScreen() {
 }
 
 function GroupList() {
-  const { spaces, switchSpace, createSpace, showToast } = useApp();
+  const { spaces, switchSpace, createSpace, pendingInvites, acceptInvite, declineInvite, showToast } = useApp();
   const [creating, setCreating] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -33,6 +34,24 @@ function GroupList() {
     <>
       <header><div><div className="eyebrow">Shared</div><h1>Split groups</h1></div></header>
       <p className="note" style={{ marginBottom: 14 }}>Shared ledgers for a family or a trip — split expenses, see who owes whom. Encrypted like everything else.</p>
+
+      {pendingInvites.length > 0 && (
+        <div className="panel" style={{ borderColor: 'var(--accent)' }}>
+          <div className="panel-head"><h2>Invitations</h2></div>
+          <ul className="ledger">
+            {pendingInvites.map((inv) => (
+              <li key={inv.id}>
+                <div className="cat">✉️</div>
+                <div className="t"><b>{inv.spaceName}</b><small>{inv.fromName} invited you</small></div>
+                <div className="a"><div className="tools">
+                  <button onClick={() => acceptInvite(inv.id)}>Accept</button>
+                  <button className="del" onClick={() => declineInvite(inv.id)}>Decline</button>
+                </div></div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {spaces.length > 0 && (
         <div className="panel" style={{ padding: 6 }}>
@@ -69,7 +88,11 @@ function GroupList() {
 }
 
 function GroupDetail() {
-  const { currentSpace, spaceMembers, spaceExpenses, session, switchSpace, startAdd, settleUp, inviteLink, showToast } = useApp();
+  const { currentSpace, spaceMembers, spaceExpenses, session, switchSpace, startAdd, settleUp, inviteLink, findUser, inviteUser, showToast } = useApp();
+  const [showInvite, setShowInvite] = useState(false);
+  const [email, setEmail] = useState('');
+  const [found, setFound] = useState<Contact | 'none' | null>(null);
+  const [busy, setBusy] = useState(false);
   const now = new Date();
   const real = useMemo(() => spaceExpenses.filter((e) => !e.settlement), [spaceExpenses]);
   const month = useMemo(() => monthExpenses(real, now), [real]);
@@ -80,13 +103,26 @@ function GroupDetail() {
   const myNet = net[me ?? ''] ?? 0;
   const recent = [...spaceExpenses].sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt)).slice(0, 6);
 
-  async function invite() {
+  async function shareLink() {
     if (!currentSpace) return;
     const link = inviteLink(currentSpace.id);
     if (!link) { showToast('Sign in again to rebuild the invite link'); return; }
     const msg = `Join "${currentSpace.name}" on LedgerLite: ${link}`;
     if (navigator.share) { try { await navigator.share({ text: msg }); return; } catch { /* closed */ } }
     try { await navigator.clipboard.writeText(link); showToast('Invite link copied'); } catch { showToast('Could not copy the link'); }
+  }
+  async function search() {
+    const e = email.trim(); if (!e) return;
+    setBusy(true);
+    try { setFound((await findUser(e)) ?? 'none'); } catch { showToast('Search failed'); } finally { setBusy(false); }
+  }
+  async function addFound() {
+    if (!found || found === 'none') return;
+    const already = spaceMembers.some((m) => m.userId === found.userId);
+    if (already) { showToast(`${found.name} is already in this group`); setFound(null); setEmail(''); return; }
+    setBusy(true);
+    try { await inviteUser(found); showToast(`Invited ${found.name}`); setFound(null); setEmail(''); setShowInvite(false); }
+    catch { showToast('Could not send the invite'); } finally { setBusy(false); }
   }
 
   return (
@@ -96,7 +132,7 @@ function GroupDetail() {
           <button className="backbtn" aria-label="Back to groups" onClick={() => { void switchSpace(null); window.scrollTo({ top: 0 }); }}>‹</button>
           <div style={{ minWidth: 0 }}><div className="eyebrow">Group</div><h1 style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{currentSpace?.name}</h1></div>
         </div>
-        <button className="btn sm" style={{ flex: '0 0 auto' }} onClick={invite}>Invite</button>
+        <button className="btn sm" style={{ flex: '0 0 auto' }} aria-pressed={showInvite} onClick={() => setShowInvite((s) => !s)}>Add people</button>
       </header>
 
       <div className="hero-wrap">
@@ -113,6 +149,29 @@ function GroupDetail() {
       </div>
 
       <button className="btn primary" style={{ width: '100%' }} onClick={() => currentSpace && startAdd(currentSpace)}>＋ Add shared expense</button>
+
+      {showInvite && (
+        <div className="panel" style={{ borderColor: 'var(--accent)' }}>
+          <div className="panel-head"><h2>Add people</h2></div>
+          <p className="note" style={{ marginBottom: 10 }}>In the group: {spaceMembers.map((m) => (m.userId === me ? 'You' : m.name)).join(', ')}.</p>
+          <label>Invite a LedgerLite user by email
+            <input type="email" inputMode="email" value={email} placeholder="friend@example.com"
+              onChange={(e) => { setEmail(e.target.value); setFound(null); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); search(); } }} />
+          </label>
+          <div className="actions">
+            <button className="btn primary" disabled={busy || !email.trim()} onClick={search}>{busy ? 'Working…' : 'Find'}</button>
+            <button className="btn" style={{ flex: '0 0 auto' }} onClick={shareLink}>Share invite link</button>
+          </div>
+          {found === 'none' && <p className="note" style={{ marginTop: 10 }}>No LedgerLite account for that email. Use <b>Share invite link</b> to invite them by message instead.</p>}
+          {found && found !== 'none' && (
+            <div className="panel" style={{ marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+              <div><b>{found.name}</b><div className="note">has a LedgerLite account</div></div>
+              <button className="btn sm primary" style={{ flex: '0 0 auto' }} disabled={busy} onClick={addFound}>Add to group</button>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="panel">
         <div className="panel-head"><h2>Balances</h2><span className="eyebrow">who owes whom</span></div>

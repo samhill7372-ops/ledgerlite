@@ -4,7 +4,7 @@
  * Every implementation receives plaintext objects and is responsible for
  * encrypting before persisting and decrypting after loading, via the Vault.
  */
-import type { Budget, Expense, RecurringRule, Space, SpaceMember } from '@/types';
+import type { Budget, Contact, Expense, PendingInvite, RecurringRule, Space, SpaceMember } from '@/types';
 
 export interface ExpenseRepo {
   list(): Promise<Expense[]>;
@@ -41,6 +41,15 @@ export interface SpaceRepo {
   listExpenses(spaceId: string): Promise<Expense[]>;
   upsertExpense(e: Expense): Promise<void>;   // requires e.spaceId
   removeExpense(spaceId: string, id: string): Promise<void>;
+  /** Find an existing user by exact email (null if none or they have no contact key). */
+  findUser(email: string): Promise<Contact | null>;
+  /** Seal the space key to `contact` and store a pending invite. `fromName` is shown to them. */
+  invite(spaceId: string, spaceName: string, contact: Contact, fromName: string): Promise<void>;
+  /** Invites waiting for me to accept. */
+  pendingInvites(): Promise<PendingInvite[]>;
+  /** Accept an invite: unseal the key, join the space, remove the invite. */
+  acceptInvite(inviteId: string, myName: string): Promise<Space | null>;
+  declineInvite(inviteId: string): Promise<void>;
 }
 
 export interface Repos { expenses: ExpenseRepo; budgets: BudgetRepo; recurring: RecurringRepo; spaces: SpaceRepo }

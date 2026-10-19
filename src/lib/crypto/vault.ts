@@ -42,6 +42,8 @@ export class Vault {
   private dek: CryptoKey | null = null;
   /** Shared-space keys (spaceId → AES key + its raw b64 for building invite links), in memory only. */
   private spaces = new Map<string, { key: CryptoKey; raw: string }>();
+  /** This account's ECDH private key for receiving sealed invites, in memory only. */
+  private contactPriv: CryptoKey | null = null;
 
   static get supported(): boolean {
     return typeof crypto !== 'undefined' && !!crypto.subtle;
@@ -76,7 +78,7 @@ export class Vault {
     return wrapDek(this.dek, newPassword);
   }
 
-  lock(): void { this.dek = null; this.spaces.clear(); }
+  lock(): void { this.dek = null; this.spaces.clear(); this.contactPriv = null; }
 
   // ---- Shared spaces -------------------------------------------------------
   // Each space has one AES-GCM key. It travels person-to-person inside the
@@ -124,6 +126,49 @@ export class Vault {
     const [iv, ct] = cipher.split('.');
     const plain = dec.decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(iv) }, this.spaceKey(spaceId), unb64(ct)));
     return JSON.parse(plain) as T;
+  }
+
+  // ---- Contact keys (invite existing users directly) -----------------------
+  // Each account has an ECDH P-256 keypair. The public key is published (safe);
+  // the private key is wrapped by the DEK. To invite someone, we seal the space
+  // key to their public key with an ephemeral key (ECIES-style); only they can
+  // open it. The server stores public keys and sealed boxes it cannot read.
+
+  get hasContactKey(): boolean { return !!this.contactPriv; }
+
+  /** Create this account's contact keypair. Returns the public key and the DEK-wrapped private key. */
+  async createContactKeys(): Promise<{ publicKey: string; wrappedPrivateKey: string }> {
+    const pair = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveKey']);
+    this.contactPriv = pair.privateKey;
+    const pub = b64(new Uint8Array(await crypto.subtle.exportKey('raw', pair.publicKey)));
+    const pkcs8 = b64(new Uint8Array(await crypto.subtle.exportKey('pkcs8', pair.privateKey)));
+    return { publicKey: pub, wrappedPrivateKey: await this.encrypt(pkcs8) };
+  }
+
+  /** Load the private key from its DEK-wrapped form (on sign-in). */
+  async loadContactKeys(wrappedPrivateKey: string): Promise<void> {
+    const pkcs8 = unb64(await this.decrypt(wrappedPrivateKey));
+    this.contactPriv = await crypto.subtle.importKey('pkcs8', pkcs8, { name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveKey']);
+  }
+
+  /** Seal a short secret (e.g. a space key) so only the holder of `recipientPub` can open it. */
+  async sealFor(recipientPublicKey: string, plaintext: string): Promise<string> {
+    const recipientPub = await crypto.subtle.importKey('raw', unb64(recipientPublicKey), { name: 'ECDH', namedCurve: 'P-256' }, false, []);
+    const eph = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveKey']);
+    const aes = await crypto.subtle.deriveKey({ name: 'ECDH', public: recipientPub }, eph.privateKey, { name: 'AES-GCM', length: 256 }, false, ['encrypt']);
+    const iv = rand(12);
+    const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aes, enc.encode(plaintext)));
+    const ephPub = b64(new Uint8Array(await crypto.subtle.exportKey('raw', eph.publicKey)));
+    return `${ephPub}.${b64(iv)}.${b64(ct)}`;
+  }
+
+  /** Open a box sealed to this account's contact key. */
+  async openSealed(sealed: string): Promise<string> {
+    if (!this.contactPriv) throw new Error('No contact key');
+    const [ephPub, iv, ct] = sealed.split('.');
+    const eph = await crypto.subtle.importKey('raw', unb64(ephPub), { name: 'ECDH', namedCurve: 'P-256' }, false, []);
+    const aes = await crypto.subtle.deriveKey({ name: 'ECDH', public: eph }, this.contactPriv, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+    return dec.decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(iv) }, aes, unb64(ct)));
   }
 
   /**

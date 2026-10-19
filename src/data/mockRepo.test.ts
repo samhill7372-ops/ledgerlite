@@ -67,6 +67,48 @@ describe('mock backend (Contract B)', () => {
     expect(await re.spaces.mine()).toEqual([]);
   });
 
+  it('invites an existing user by email with sealed keys (no plaintext key leaks)', async () => {
+    // Alice signs up (gets a contact keypair) and creates a group.
+    const va = new Vault(); const authA = new MockAuth(va);
+    const a = await authA.signUp('Alice', 'alice@x.com', 'pass-alice');
+    const ra = mockRepos(va, a.session.userId);
+    const raw = await Vault.generateSpaceKeyRaw();
+    const spaceId = webcrypto.randomUUID();
+    await va.addSpaceKey(spaceId, raw);
+    await ra.spaces.create({ id: spaceId, name: 'Goa Trip' }, raw, 'Alice');
+    await authA.signOut();
+
+    // Bob signs up so he has a published contact key.
+    const vb = new Vault(); const authB = new MockAuth(vb);
+    const b = await authB.signUp('Bob', 'bob@x.com', 'pass-bob');
+    const rb = mockRepos(vb, b.session.userId);
+    await authB.signOut();
+
+    // Alice signs back in, finds Bob by email, invites him.
+    await authA.signIn('alice@x.com', 'pass-alice');
+    await ra.spaces.mine(); // unwraps her space key into the vault (real path)
+    const found = await ra.spaces.findUser('BOB@x.com'); // case-insensitive
+    expect(found?.userId).toBe(b.session.userId);
+    expect(await ra.spaces.findUser('nobody@x.com')).toBeNull();
+    await ra.spaces.invite(spaceId, 'Goa Trip', found!, 'Alice');
+    await authA.signOut();
+
+    // The stored invite must not contain the raw space key.
+    expect(JSON.stringify(localStorage)).not.toContain(raw);
+
+    // Bob signs in, sees the pending invite, accepts, and can read the group.
+    await authB.signIn('bob@x.com', 'pass-bob');
+    const pend = await rb.spaces.pendingInvites();
+    expect(pend).toHaveLength(1);
+    expect(pend[0].spaceName).toBe('Goa Trip');
+    expect(pend[0].fromName).toBe('Alice');
+    const joined = await rb.spaces.acceptInvite(pend[0].id, 'Bob');
+    expect(joined?.name).toBe('Goa Trip');
+    expect((await rb.spaces.mine()).map((s) => s.name)).toContain('Goa Trip');
+    expect((await rb.spaces.members(spaceId)).map((m) => m.name).sort()).toEqual(['Alice', 'Bob']);
+    expect(await rb.spaces.pendingInvites()).toEqual([]);
+  });
+
   it('recovers with the code and keeps data', async () => {
     const vault = new Vault(); const auth = new MockAuth(vault);
     const { session, recoveryCode } = await auth.signUp('A', 'a@x.com', 'passwordA');

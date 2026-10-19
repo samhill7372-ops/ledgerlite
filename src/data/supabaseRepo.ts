@@ -3,7 +3,7 @@
  * only ever stores `payload` ciphertext. RLS (see supabase/migrations) makes
  * sure a user can only touch their own rows.
  */
-import type { Budget, Expense, Profile, RecurringRule, Space, SpaceMember, WrappedKey } from '@/types';
+import type { Budget, Contact, Expense, PendingInvite, Profile, RecurringRule, Space, SpaceMember, WrappedKey } from '@/types';
 import type { BudgetRepo, ExpenseRepo, RecurringRepo, SpaceRepo, Repos } from './repo';
 import type { AuthApi, Session } from '@/auth/api';
 import { AuthError } from '@/auth/api';
@@ -135,6 +135,43 @@ class SbSpaceRepo implements SpaceRepo {
     const { error } = await supabase().from('expenses').update({ deleted_at: new Date().toISOString() }).eq('id', id).eq('space_id', spaceId);
     if (error) throw error;
   }
+  async findUser(email: string): Promise<Contact | null> {
+    const { data, error } = await supabase().rpc('find_user_for_invite', { lookup_email: email });
+    if (error) throw error;
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row || !row.public_key || row.id === this.userId) return null;
+    return { userId: row.id, name: row.name, publicKey: row.public_key };
+  }
+  async invite(spaceId: string, spaceName: string, contact: Contact, fromName: string) {
+    const raw = this.vault.rawSpaceKey(spaceId);
+    if (!raw) throw new Error('Open the group first so its key is available');
+    const sealed = await this.vault.sealFor(contact.publicKey, JSON.stringify({ k: raw, n: spaceName, f: fromName }));
+    const { error } = await supabase().from('space_invites')
+      .upsert({ id: crypto.randomUUID(), space_id: spaceId, from_user: this.userId, to_user: contact.userId, sealed }, { onConflict: 'space_id,to_user' });
+    if (error) throw error;
+  }
+  async pendingInvites(): Promise<PendingInvite[]> {
+    const { data, error } = await supabase().from('space_invites').select('id,space_id,sealed').eq('to_user', this.userId);
+    if (error) throw error;
+    const out: PendingInvite[] = [];
+    for (const r of data ?? []) {
+      try { const o = JSON.parse(await this.vault.openSealed(r.sealed)); out.push({ id: r.id, spaceId: r.space_id, spaceName: o.n, fromName: o.f }); }
+      catch { /* can't open (not for this key): skip */ }
+    }
+    return out;
+  }
+  async acceptInvite(inviteId: string, myName: string): Promise<Space | null> {
+    const { data, error } = await supabase().from('space_invites').select('space_id,sealed').eq('id', inviteId).single();
+    if (error || !data) return null;
+    const o = JSON.parse(await this.vault.openSealed(data.sealed)) as { k: string; n: string };
+    await this.join(data.space_id, o.k, myName);
+    await supabase().from('space_invites').delete().eq('id', inviteId);
+    return { id: data.space_id, name: o.n };
+  }
+  async declineInvite(inviteId: string) {
+    const { error } = await supabase().from('space_invites').delete().eq('id', inviteId);
+    if (error) throw error;
+  }
 }
 
 export class SupabaseAuth implements AuthApi {
@@ -149,7 +186,19 @@ export class SupabaseAuth implements AuthApi {
   private async profile(userId: string): Promise<Profile> {
     const { data, error } = await supabase().from('profiles').select('*').eq('id', userId).single();
     if (error || !data) throw new AuthError('Profile not found.');
-    return { id: data.id, name: data.name, email: '', byPassword: data.by_password as WrappedKey, byRecovery: data.by_recovery as WrappedKey, createdAt: data.created_at };
+    return { id: data.id, name: data.name, email: '', byPassword: data.by_password as WrappedKey, byRecovery: data.by_recovery as WrappedKey, publicKey: data.public_key ?? undefined, wrappedPrivateKey: data.wrapped_private_key ?? undefined, createdAt: data.created_at };
+  }
+
+  /** Load the contact keypair (needs the DEK unlocked); create + save it for older accounts.
+   *  Best-effort: if the DB lacks the key columns (migration not yet applied), the rest of
+   *  the app still works — only direct invites are unavailable until it is. */
+  private async ensureContactKeys(userId: string, p: Profile) {
+    if (this.vault.locked) return;
+    if (p.wrappedPrivateKey) { try { await this.vault.loadContactKeys(p.wrappedPrivateKey); return; } catch { /* fall through and regenerate */ } }
+    try {
+      const ck = await this.vault.createContactKeys();
+      await supabase().from('profiles').update({ public_key: ck.publicKey, wrapped_private_key: ck.wrappedPrivateKey }).eq('id', userId);
+    } catch { /* columns missing or write blocked: invites stay off until migration */ }
   }
 
   async restore(): Promise<Session | null> {
@@ -157,7 +206,7 @@ export class SupabaseAuth implements AuthApi {
     const u = data.session?.user; if (!u) return null;
     const p = await this.profile(u.id);
     const k = await loadSessionKey(u.id);
-    if (k) this.vault.unlockWithSessionKey(k); // stays unlocked on this device
+    if (k) { this.vault.unlockWithSessionKey(k); await this.ensureContactKeys(u.id, p); } // stays unlocked on this device
     return { userId: u.id, email: u.email ?? '', name: p.name };
   }
 
@@ -167,6 +216,11 @@ export class SupabaseAuth implements AuthApi {
     if (error || !data.user) throw new AuthError(error?.message ?? 'Sign-up failed.');
     const { error: pErr } = await supabase().from('profiles').insert({ id: data.user.id, name, by_password: keys.byPassword, by_recovery: keys.byRecovery });
     if (pErr) throw new AuthError(pErr.message);
+    // Contact keys are a best-effort follow-up write, so a pre-migration DB still allows signup.
+    try {
+      const ck = await this.vault.createContactKeys();
+      await supabase().from('profiles').update({ public_key: ck.publicKey, wrapped_private_key: ck.wrappedPrivateKey }).eq('id', data.user.id);
+    } catch { /* invites unavailable until the key columns exist */ }
     await this.persistKey(data.user.id);
     return { session: { userId: data.user.id, email, name }, recoveryCode: keys.recoveryCode };
   }
@@ -176,6 +230,7 @@ export class SupabaseAuth implements AuthApi {
     if (error || !data.user) throw new AuthError('Email or password is incorrect.');
     const p = await this.profile(data.user.id);
     if (!(await this.vault.unlock(p.byPassword, password))) throw new AuthError('Could not unlock your data with this password.');
+    await this.ensureContactKeys(data.user.id, p);
     await this.persistKey(data.user.id);
     return { userId: data.user.id, email, name: p.name };
   }
@@ -196,6 +251,7 @@ export class SupabaseAuth implements AuthApi {
     if (aErr) throw new AuthError(aErr.message);
     const { error } = await supabase().from('profiles').update({ by_password: byPassword }).eq('id', data.user.id);
     if (error) throw new AuthError(error.message);
+    await this.ensureContactKeys(data.user.id, p);
     await this.persistKey(data.user.id);
     return { userId: data.user.id, email: data.user.email ?? '', name: p.name };
   }

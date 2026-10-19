@@ -86,6 +86,23 @@ describe('Vault', () => {
     alice.lock();
     await expect(alice.encryptJSONFor('trip', {})).rejects.toThrow(/No key/);
   });
+
+  it('contact keys: seal to a public key, only the holder opens it', async () => {
+    const bob = new Vault(); await bob.createUserKeys('bob-pass');
+    const bobKeys = await bob.createContactKeys();                 // bob publishes bobKeys.publicKey
+    const alice = new Vault(); await alice.createUserKeys('alice-pass');
+    const sealed = await alice.sealFor(bobKeys.publicKey, 'the-space-key'); // alice invites bob
+    expect(sealed).not.toContain('the-space-key');
+
+    expect(await bob.openSealed(sealed)).toBe('the-space-key');
+    await bob.loadContactKeys(bobKeys.wrappedPrivateKey);          // wrapped form also opens it
+    expect(await bob.openSealed(sealed)).toBe('the-space-key');
+
+    const eve = new Vault(); await eve.createUserKeys('eve-pass'); await eve.createContactKeys();
+    await expect(eve.openSealed(sealed)).rejects.toThrow();        // outsider cannot open
+    bob.lock();
+    expect(bob.hasContactKey).toBe(false);                         // lock clears the contact key
+  });
 });
 
 describe('recovery code', () => {
