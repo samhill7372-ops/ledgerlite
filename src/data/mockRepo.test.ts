@@ -3,6 +3,8 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { webcrypto } from 'node:crypto';
 import { Vault } from '@/lib/crypto';
 import { MockAuth, mockRepos } from './mockRepo';
+import { equalShares, computeNet, simplifyDebts } from '@/lib/split';
+import type { Expense } from '@/types';
 
 beforeEach(() => { localStorage.clear(); Object.defineProperty(globalThis, 'crypto', { value: webcrypto, configurable: true }); });
 
@@ -23,6 +25,46 @@ describe('mock backend (Contract B)', () => {
     await expect(auth.signIn('a@x.com', 'wrongpass')).rejects.toThrow(/incorrect/);
     await auth.signIn('a@x.com', 'passwordA');
     expect((await ra.expenses.list())[0].note).toBe('Meghana');
+  });
+
+  it('shares a space between two users and keeps outsiders blind', async () => {
+    // Alice creates the trip space.
+    const va = new Vault(); const authA = new MockAuth(va);
+    const a = await authA.signUp('Alice', 'alice@x.com', 'pass-alice');
+    const ra = mockRepos(va, a.session.userId);
+    const raw = await Vault.generateSpaceKeyRaw();
+    const spaceId = webcrypto.randomUUID();
+    await va.addSpaceKey(spaceId, raw);
+    await ra.spaces.create({ id: spaceId, name: 'Goa Trip' }, raw, 'Alice');
+
+    // Bob joins with the key from the invite link and both log split expenses.
+    const vb = new Vault(); const authB = new MockAuth(vb);
+    const b = await authB.signUp('Bob', 'bob@x.com', 'pass-bob');
+    const rb = mockRepos(vb, b.session.userId);
+    await rb.spaces.join(spaceId, raw, 'Bob');
+    const ids = [a.session.userId, b.session.userId];
+    const exp = (id: string, amount: number, paidBy: string): Expense => ({
+      id, amount, currency: 'INR', category: 'Other', date: '2026-10-18', note: 'x', source: 'manual',
+      spaceId, split: { paidBy, shares: equalShares(amount, ids) }, createdAt: '', updatedAt: '',
+    });
+    await ra.spaces.upsertExpense(exp(webcrypto.randomUUID(), 6000, a.session.userId));
+    await rb.spaces.upsertExpense(exp(webcrypto.randomUUID(), 1500, b.session.userId));
+
+    // Both see both expenses, names resolve, balances agree on both devices.
+    expect((await ra.spaces.mine()).map((s) => s.name)).toEqual(['Goa Trip']);
+    expect((await rb.spaces.members(spaceId)).map((m) => m.name).sort()).toEqual(['Alice', 'Bob']);
+    const fromA = await ra.spaces.listExpenses(spaceId);
+    const fromB = await rb.spaces.listExpenses(spaceId);
+    expect(fromA).toHaveLength(2);
+    expect(computeNet(fromB)).toEqual(computeNet(fromA));
+    expect(simplifyDebts(computeNet(fromA))).toEqual([{ from: b.session.userId, to: a.session.userId, amount: 2250 }]);
+
+    // Eve signs up but never gets the space key: ciphertext stays unreadable.
+    const ve = new Vault(); const authE = new MockAuth(ve);
+    const e = await authE.signUp('Eve', 'eve@x.com', 'pass-eve');
+    const re = mockRepos(ve, e.session.userId);
+    expect(await re.spaces.listExpenses(spaceId)).toEqual([]);
+    expect(await re.spaces.mine()).toEqual([]);
   });
 
   it('recovers with the code and keeps data', async () => {

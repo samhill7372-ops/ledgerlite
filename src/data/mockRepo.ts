@@ -2,8 +2,8 @@
  * Browser-only backend: encrypted localStorage, namespaced per user.
  * Lets Zone 3 run with no network. Also the shape of the future offline cache.
  */
-import type { Budget, Expense, Profile, RecurringRule } from '@/types';
-import type { BudgetRepo, ExpenseRepo, RecurringRepo, Repos } from './repo';
+import type { Budget, Expense, Profile, RecurringRule, Space, SpaceMember } from '@/types';
+import type { BudgetRepo, ExpenseRepo, RecurringRepo, SpaceRepo, Repos } from './repo';
 import type { AuthApi, Session } from '@/auth/api';
 import { AuthError, toSession } from '@/auth/api';
 import { saveSessionKey, loadSessionKey, clearSessionKeys } from '@/auth/keystore';
@@ -43,6 +43,76 @@ class MockRecurringRepo implements RecurringRepo {
     try { return await this.vault.decryptJSON<RecurringRule[]>(raw); } catch { return []; }
   }
   async saveAll(rules: RecurringRule[]) { safe.set(this.key, await this.vault.encryptJSON(rules)); }
+}
+
+/**
+ * Mock spaces live in shared (not per-user) localStorage keys, playing the role
+ * of the server: several mock users in the same browser can share a space,
+ * which makes the whole split flow testable offline.
+ */
+const SPACES = 'll.spaces.v1', MEMBERS = 'll.spacemembers.v1';
+interface MemberRow { spaceId: string; userId: string; wrappedKey: string; profile: string }
+
+class MockSpaceRepo implements SpaceRepo {
+  constructor(private vault: Vault, private userId: string) {}
+  private spaces(): Record<string, { meta: string; createdBy: string }> { try { return JSON.parse(safe.get(SPACES) || '{}'); } catch { return {}; } }
+  private membersAll(): MemberRow[] { try { return JSON.parse(safe.get(MEMBERS) || '[]'); } catch { return []; } }
+  private expKey(spaceId: string) { return `ll.spaceexp.${spaceId}.v1`; }
+  private exps(spaceId: string): Record<string, string> { try { return JSON.parse(safe.get(this.expKey(spaceId)) || '{}'); } catch { return {}; } }
+
+  async create(space: Space, rawKey: string, myName: string) {
+    const all = this.spaces();
+    all[space.id] = { meta: await this.vault.encryptJSONFor(space.id, { name: space.name }), createdBy: this.userId };
+    safe.set(SPACES, JSON.stringify(all));
+    await this.join(space.id, rawKey, myName);
+  }
+  async join(spaceId: string, rawKey: string, myName: string) {
+    await this.vault.addSpaceKey(spaceId, rawKey);
+    const rows = this.membersAll().filter((m) => !(m.spaceId === spaceId && m.userId === this.userId));
+    rows.push({ spaceId, userId: this.userId, wrappedKey: await this.vault.wrapSpaceKey(rawKey), profile: await this.vault.encryptJSONFor(spaceId, { name: myName }) });
+    safe.set(MEMBERS, JSON.stringify(rows));
+  }
+  async mine(): Promise<Space[]> {
+    const spaces = this.spaces();
+    const out: Space[] = [];
+    for (const m of this.membersAll().filter((m) => m.userId === this.userId)) {
+      try {
+        await this.vault.unwrapSpaceKey(m.spaceId, m.wrappedKey);
+        const meta = spaces[m.spaceId]; if (!meta) continue;
+        out.push({ id: m.spaceId, name: (await this.vault.decryptJSONFor<{ name: string }>(m.spaceId, meta.meta)).name });
+      } catch { /* key or meta unreadable: skip */ }
+    }
+    return out;
+  }
+  async members(spaceId: string): Promise<SpaceMember[]> {
+    const out: SpaceMember[] = [];
+    for (const m of this.membersAll().filter((m) => m.spaceId === spaceId)) {
+      try { out.push({ userId: m.userId, name: (await this.vault.decryptJSONFor<{ name: string }>(spaceId, m.profile)).name }); }
+      catch { out.push({ userId: m.userId, name: 'Member' }); }
+    }
+    return out;
+  }
+  async leave(spaceId: string) {
+    safe.set(MEMBERS, JSON.stringify(this.membersAll().filter((m) => !(m.spaceId === spaceId && m.userId === this.userId))));
+    this.vault.dropSpaceKey(spaceId);
+  }
+  async listExpenses(spaceId: string): Promise<Expense[]> {
+    const out: Expense[] = [];
+    for (const payload of Object.values(this.exps(spaceId))) {
+      try { out.push(await this.vault.decryptJSONFor<Expense>(spaceId, payload)); } catch { /* skip */ }
+    }
+    return out;
+  }
+  async upsertExpense(e: Expense) {
+    if (!e.spaceId) throw new Error('upsertExpense needs spaceId');
+    const all = this.exps(e.spaceId);
+    all[e.id] = await this.vault.encryptJSONFor(e.spaceId, e);
+    safe.set(this.expKey(e.spaceId), JSON.stringify(all));
+  }
+  async removeExpense(spaceId: string, id: string) {
+    const all = this.exps(spaceId); delete all[id];
+    safe.set(this.expKey(spaceId), JSON.stringify(all));
+  }
 }
 
 const USERS = 'll.users.v1', SESSION = 'll.session.v1';
@@ -95,5 +165,5 @@ export class MockAuth implements AuthApi {
 }
 
 export function mockRepos(vault: Vault, userId: string): Repos {
-  return { expenses: new MockExpenseRepo(vault, `ll.${userId}.expenses.v1`), budgets: new MockBudgetRepo(vault, `ll.${userId}.budget.v1`), recurring: new MockRecurringRepo(vault, `ll.${userId}.recurring.v1`) };
+  return { expenses: new MockExpenseRepo(vault, `ll.${userId}.expenses.v1`), budgets: new MockBudgetRepo(vault, `ll.${userId}.budget.v1`), recurring: new MockRecurringRepo(vault, `ll.${userId}.recurring.v1`), spaces: new MockSpaceRepo(vault, userId) };
 }

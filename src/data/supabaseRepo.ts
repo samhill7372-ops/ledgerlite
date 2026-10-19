@@ -3,8 +3,8 @@
  * only ever stores `payload` ciphertext. RLS (see supabase/migrations) makes
  * sure a user can only touch their own rows.
  */
-import type { Budget, Expense, Profile, RecurringRule, WrappedKey } from '@/types';
-import type { BudgetRepo, ExpenseRepo, RecurringRepo, Repos } from './repo';
+import type { Budget, Expense, Profile, RecurringRule, Space, SpaceMember, WrappedKey } from '@/types';
+import type { BudgetRepo, ExpenseRepo, RecurringRepo, SpaceRepo, Repos } from './repo';
 import type { AuthApi, Session } from '@/auth/api';
 import { AuthError } from '@/auth/api';
 import { saveSessionKey, loadSessionKey, clearSessionKeys } from '@/auth/keystore';
@@ -14,7 +14,7 @@ import { supabase } from './supabase';
 class SbExpenseRepo implements ExpenseRepo {
   constructor(private vault: Vault, private userId: string) {}
   async list(): Promise<Expense[]> {
-    const { data, error } = await supabase().from('expenses').select('id,payload').eq('user_id', this.userId).is('deleted_at', null);
+    const { data, error } = await supabase().from('expenses').select('id,payload').eq('user_id', this.userId).is('space_id', null).is('deleted_at', null);
     if (error) throw error;
     const out: Expense[] = [];
     for (const r of data ?? []) { try { out.push(await this.vault.decryptJSON<Expense>(r.payload)); } catch { /* skip undecryptable */ } }
@@ -30,7 +30,7 @@ class SbExpenseRepo implements ExpenseRepo {
     if (error) throw error;
   }
   async replaceAll(list: Expense[]) {
-    const { error: delErr } = await supabase().from('expenses').delete().eq('user_id', this.userId);
+    const { error: delErr } = await supabase().from('expenses').delete().eq('user_id', this.userId).is('space_id', null);
     if (delErr) throw delErr;
     if (!list.length) return;
     const rows = await Promise.all(list.map(async (e) => ({ id: e.id, user_id: this.userId, payload: await this.vault.encryptJSON(e) })));
@@ -63,6 +63,73 @@ class SbRecurringRepo implements RecurringRepo {
   }
   async saveAll(rules: RecurringRule[]) {
     const { error } = await supabase().from('recurring').upsert({ user_id: this.userId, payload: await this.vault.encryptJSON(rules) });
+    if (error) throw error;
+  }
+}
+
+class SbSpaceRepo implements SpaceRepo {
+  constructor(private vault: Vault, private userId: string) {}
+
+  async create(space: Space, rawKey: string, myName: string) {
+    const meta = await this.vault.encryptJSONFor(space.id, { name: space.name });
+    const { error } = await supabase().from('spaces').insert({ id: space.id, created_by: this.userId, meta });
+    if (error) throw error;
+    await this.join(space.id, rawKey, myName);
+  }
+  async join(spaceId: string, rawKey: string, myName: string) {
+    await this.vault.addSpaceKey(spaceId, rawKey);
+    const row = {
+      space_id: spaceId, user_id: this.userId,
+      wrapped_key: await this.vault.wrapSpaceKey(rawKey),
+      profile: await this.vault.encryptJSONFor(spaceId, { name: myName }),
+    };
+    const { error } = await supabase().from('space_members').upsert(row);
+    if (error) throw error;
+  }
+  async mine(): Promise<Space[]> {
+    const { data, error } = await supabase().from('space_members').select('space_id,wrapped_key').eq('user_id', this.userId);
+    if (error) throw error;
+    const out: Space[] = [];
+    for (const m of data ?? []) {
+      try {
+        await this.vault.unwrapSpaceKey(m.space_id, m.wrapped_key);
+        const { data: s } = await supabase().from('spaces').select('meta').eq('id', m.space_id).single();
+        if (!s) continue;
+        out.push({ id: m.space_id, name: (await this.vault.decryptJSONFor<{ name: string }>(m.space_id, s.meta)).name });
+      } catch { /* key or meta unreadable: skip */ }
+    }
+    return out;
+  }
+  async members(spaceId: string): Promise<SpaceMember[]> {
+    const { data, error } = await supabase().from('space_members').select('user_id,profile').eq('space_id', spaceId);
+    if (error) throw error;
+    const out: SpaceMember[] = [];
+    for (const m of data ?? []) {
+      try { out.push({ userId: m.user_id, name: (await this.vault.decryptJSONFor<{ name: string }>(spaceId, m.profile)).name }); }
+      catch { out.push({ userId: m.user_id, name: 'Member' }); }
+    }
+    return out;
+  }
+  async leave(spaceId: string) {
+    const { error } = await supabase().from('space_members').delete().eq('space_id', spaceId).eq('user_id', this.userId);
+    if (error) throw error;
+    this.vault.dropSpaceKey(spaceId);
+  }
+  async listExpenses(spaceId: string): Promise<Expense[]> {
+    const { data, error } = await supabase().from('expenses').select('payload').eq('space_id', spaceId).is('deleted_at', null);
+    if (error) throw error;
+    const out: Expense[] = [];
+    for (const r of data ?? []) { try { out.push(await this.vault.decryptJSONFor<Expense>(spaceId, r.payload)); } catch { /* skip */ } }
+    return out;
+  }
+  async upsertExpense(e: Expense) {
+    if (!e.spaceId) throw new Error('upsertExpense needs spaceId');
+    const payload = await this.vault.encryptJSONFor(e.spaceId, e);
+    const { error } = await supabase().from('expenses').upsert({ id: e.id, user_id: this.userId, space_id: e.spaceId, payload, deleted_at: null });
+    if (error) throw error;
+  }
+  async removeExpense(spaceId: string, id: string) {
+    const { error } = await supabase().from('expenses').update({ deleted_at: new Date().toISOString() }).eq('id', id).eq('space_id', spaceId);
     if (error) throw error;
   }
 }
@@ -134,5 +201,5 @@ export class SupabaseAuth implements AuthApi {
 }
 
 export function supabaseRepos(vault: Vault, userId: string): Repos {
-  return { expenses: new SbExpenseRepo(vault, userId), budgets: new SbBudgetRepo(vault, userId), recurring: new SbRecurringRepo(vault, userId) };
+  return { expenses: new SbExpenseRepo(vault, userId), budgets: new SbBudgetRepo(vault, userId), recurring: new SbRecurringRepo(vault, userId), spaces: new SbSpaceRepo(vault, userId) };
 }
