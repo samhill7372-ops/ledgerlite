@@ -16,6 +16,7 @@ language sql stable security definer set search_path = public, auth as $$
   join public.profiles p on p.id = u.id
   where lower(u.email) = lower(trim(lookup_email))
     and p.public_key is not null
+    and u.email not like '%@ledgerlite-test.dev'   -- never surface automated-test accounts
   limit 1;
 $$;
 revoke all on function public.find_user_for_invite(text) from public, anon;
